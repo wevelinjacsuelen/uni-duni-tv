@@ -2,7 +2,7 @@
    Sem IA paga: cada avaliação soma ou tira pontos dos gêneros e temas do título. */
 (function () {
   const W = { liked: 3, want: 1.5, dropped: 0.8, dislike: -2, disliked: -2.5 };
-  const SKIP_DAYS = 7;
+  const SKIP_DAYS = 365; // "Pular" = este título não, para sempre (na prática), sem mexer no seu gosto
   const EXPLORE_EVERY = 5; // 1 em cada 5 cartões é fora da sua bolha (20%)
 
   function profile() {

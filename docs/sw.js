@@ -1,6 +1,6 @@
 /* Uni Duni TV: guarda o app no celular para abrir rápido.
    Ao mudar qualquer arquivo do app, aumente a versão abaixo. */
-const VERSION = "udtv-1.2.0";
+const VERSION = "udtv-1.2.1";
 const SHELL = [
   "./", "index.html", "css/style.css", "manifest.webmanifest",
   "js/data.js", "js/store.js", "js/tmdb.js", "js/engine.js", "js/app.js",

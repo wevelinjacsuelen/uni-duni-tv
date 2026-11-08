@@ -516,7 +516,7 @@
     U.deck = U.deck.filter(c => c.k !== it.k);
     drawDeck();
     fillDeck();
-    const msg = { want: "Adicionado a Quero ver", dislike: "Anotado: não gosto", liked: "Assistido e gostou", disliked: "Assistido e não gostou", dropped: "Anotado: desistiu", skip: "Pulado" }[status];
+    const msg = { want: "Adicionado a Quero ver", dislike: "Anotado: não gosto", liked: "Assistido e gostou", disliked: "Assistido e não gostou", dropped: "Anotado: desistiu", skip: "Pulado: não volta a aparecer" }[status];
     toast(msg, "Desfazer", () => {
       undo();
       U.deck = [it].concat(U.deck.filter(c => c.k !== it.k));
@@ -722,7 +722,11 @@
 
   async function tdAct(a, type) {
     const it = (S.daily[dayKey()] || {})[type];
-    if (a === "swap") return ensureToday(type, true);
+    if (a === "swap") {
+      const old = (S.daily[dayKey()] || {})[type];
+      if (old && !S.items[old.k]) { S.skips[old.k] = Date.now(); store.save(); } // trocou porque não quis esse
+      return ensureToday(type, true);
+    }
     if (!it) return;
     if (a === "open") return openDetail(it, { refresh: drawToday });
     let status, reason = "";
@@ -1144,7 +1148,7 @@
   /* =========================================================
      INÍCIO DO APP
      ========================================================= */
-  UD.VERSION = "1.2.0";
+  UD.VERSION = "1.2.1";
   function start() {
     if (!S.apiKey) renderWelcome();
     else if (!S.onboarded) renderOnboarding();
