@@ -15,6 +15,7 @@
     filters: { maxRuntime: 0, minYear: 0, minVote: 0 },
     prog: {},           // "tv:123" -> { "1": [1,2,3], "2": [1] } episódios vistos por temporada
     tv: {},             // "tv:123" -> { sn:[[temp, qtd]], L:[temp,ep], st:"Ended", nx:{...} } dados da série
+    log: [],            // histórico: [{id,k,kind:"title|ep|season",s,e,n,d:"2026-11-08",ts}]
     streak: [],         // dias ("2026-11-08") em que você marcou "assisti agora"
     cal: {},            // "movie:123" -> data de estreia (para o calendário)
     daily: {},          // "2026-11-08" -> { movie: {...}, tv: {...} } (sugestão do dia)
@@ -97,14 +98,22 @@
     return { cur, today };
   }
 
+  /* ---- histórico ---- */
+  function logWatch(it, o, date) {
+    const when = date ? new Date(date + "T12:00:00") : new Date();
+    const e = Object.assign({ id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), k: it.k, ts: when.getTime(), d: dk(when) }, o);
+    S.log.push(e); save(); return e;
+  }
+  function unlog(pred) { S.log = S.log.filter(e => !pred(e)); save(); }
+
   /* status possíveis:
      want = quero ver | dislike = não gosto (não vi) | liked = vi e gostei | disliked = vi e não gostei
      dropped = comecei e desisti (com motivo opcional em "reason")
      watching = série em andamento (alguns episódios vistos) */
   function setStatus(it, status, reason) {
     const prev = S.items[it.k] ? Object.assign({}, S.items[it.k]) : null;
-    lastProg = { k: it.k, val: copy(S.prog[it.k]) };
-    if (!status) { delete S.items[it.k]; delete S.prog[it.k]; }
+    lastProg = { k: it.k, val: copy(S.prog[it.k]), log: copy(S.log) };
+    if (!status) { delete S.items[it.k]; delete S.prog[it.k]; S.log = S.log.filter(e => e.k !== it.k); }
     else {
       S.items[it.k] = {
         k: it.k, id: it.id, type: it.type, title: it.title, poster: it.poster || null,
@@ -122,7 +131,7 @@
 
   function restore(k, prevRecord) {
     if (prevRecord) S.items[k] = prevRecord; else delete S.items[k];
-    if (lastProg && lastProg.k === k) { if (lastProg.val) S.prog[k] = lastProg.val; else delete S.prog[k]; }
+    if (lastProg && lastProg.k === k) { if (lastProg.val) S.prog[k] = lastProg.val; else delete S.prog[k]; if (lastProg.log) S.log = lastProg.log; }
     save();
   }
 
@@ -160,5 +169,5 @@
   }
 
   UD.S = S;
-  UD.store = { markToday, streakInfo, save, setStatus, restore, counts, airedOf, progOf, nextEp, setEps, exportData, importData, reset };
+  UD.store = { logWatch, unlog, markToday, streakInfo, save, setStatus, restore, counts, airedOf, progOf, nextEp, setEps, exportData, importData, reset };
 })();

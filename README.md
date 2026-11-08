@@ -22,6 +22,8 @@ Acesso: https://wevelinjacsuelen.github.io/uni-duni-tv
 
 **Buscar.** Procure por título, por pessoa (ator, diretor ou autor, com a filmografia separada em Atuou, Dirigiu e Escreveu e botão para marcar o que já assistiu) ou por tema escrito do seu jeito (os resultados de tema escondem o que você já avaliou e têm "Ver mais") (por exemplo "natal", "viagem no tempo"). Ao marcar um título da busca como "quero ver" ou "já assisti", aparece uma faixa "Parecidos com...". Também mostra os filmes e séries em alta da semana e permite criar atalhos pessoais, como "Domingo chuvoso", com gêneros, tema e duração.
 
+**Histórico.** Em Listas, linha do tempo do que você assistiu, por dia, com o episódio e o nome. Ao marcar algo como assistido o app pergunta "Foi agora?": Sim registra hoje e conta na sequência de dias, Não guarda sem data. O que não tem data fica em "Sem data" e você toca para colocar a data certa. Nos episódios dá para escolher registrar "Agora" ou "Sem data".
+
 **Listas.** Quero ver, Assistindo (só séries), Assistidos, Desisti e Não gostei, com Filmes e Séries separados como no Início.
 
 **Perfil.** Seus gêneros favoritos, os que você evita, os motivos pelos quais você desiste de séries, e backup: exporte seu perfil para um arquivo e importe em outro aparelho.

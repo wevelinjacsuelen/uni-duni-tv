@@ -20,6 +20,7 @@
     bookmark: I('<path d="M6 3h12v18l-6-4-6 4z"/>'),
     user: I('<circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-7 8-7s8 3 8 7"/>'),
     check: I('<path d="M5 12l5 5L20 7"/>'),
+    history: I('<path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l3 2"/>'),
     pause: I('<path d="M9 5v14M15 5v14"/>'),
     sun: I('<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M5 5l1.5 1.5M17.5 17.5L19 19M5 19l1.5-1.5M17.5 6.5L19 5"/>'),
     thumbUp: I('<path d="M7 11v9H4v-9zM7 11l4-8c1.7 0 3 1.3 3 3v3h5.2a2 2 0 0 1 2 2.3l-1.2 7A2 2 0 0 1 18 20H7"/>'),
@@ -131,6 +132,28 @@
     });
   }
 
+  function askNow(title) {
+    return new Promise(resolve => {
+      let answered = false;
+      const ov = openOverlay(`
+        <div class="modal">
+          <div class="ic">${IC.history}</div>
+          <h2>Foi agora?</h2>
+          <p>${title ? esc(title) : ""}</p>
+          <p class="muted small" style="margin-top:-4px">Sim registra hoje no Histórico e conta na sequência de dias. Não guarda sem data, e você ajusta depois.</p>
+          <div class="two">
+            <button class="btn primary" data-n="1">Sim, agora</button>
+            <button class="btn" data-n="0">Foi antes</button>
+          </div>
+        </div>`, { center: true, onClose: () => { if (!answered) resolve(false); } });
+      $$("[data-n]", ov).forEach(b => b.onclick = () => { answered = true; resolve(b.dataset.n === "1"); closeOverlay(); });
+    });
+  }
+  // depois de setStatus: se foi "agora", registra no histórico e na sequência
+  function logNow(it, r) {
+    if (r && r.now) { store.logWatch(it, { kind: "title" }); store.markToday(); }
+  }
+
   function askReason(title) {
     return new Promise(resolve => {
       let answered = false;
@@ -151,12 +174,16 @@
   // título que ainda não estreou: não dá para "já assisti", só "quero ver"
   const isUnreleased = it => !!(it && it.date && it.date > dayKey());
   const fmtDate = d => d.split("-").reverse().join("/");
-  async function askWatched(title, it) {
+  async function askWatched(title, it, opts = {}) {
     if (isUnreleased(it)) { toast(`Ainda não estreou (${fmtDate(it.date)}). Marcado como Quero ver.`, null, null, 4500); return { status: "want", reason: "" }; }
     const status = await askLiked(title, !!(it && it.type === "tv"));
     if (!status) return null;
     if (status === "partial") return { status: "watching", reason: "", partial: true };
-    if (status !== "dropped") return { status, reason: "" };
+    if (status !== "dropped") {
+      if (opts.noNow) return { status, reason: "" };
+      await new Promise(r => setTimeout(r, 80));
+      return { status, reason: "", now: await askNow(title) };
+    }
     await new Promise(r => setTimeout(r, 80)); // deixa a janela anterior fechar
     return { status, reason: await askReason(title) };
   }
@@ -516,6 +543,7 @@
         const r = await askWatched(it.title, it);
         if (!r) { drawDeck(); return; }
         commit(it, r.status, r.reason);
+        logNow(it, r);
         if (r.partial) openLater(it);
       } else {
         await flyOut(card, kind);
@@ -617,19 +645,20 @@
     });
     $$("[data-s]", sheet).forEach(b => b.onclick = async () => {
       const s = b.dataset.s;
-      let status = s, reason = "", partial = false;
+      let status = s, reason = "", partial = false, nowR = null;
       if (s === "seen") {
         closeOverlay();
         await new Promise(r => setTimeout(r, 60));
         const r = await askWatched(d.title, d);
         if (!r) return;
-        status = r.status; reason = r.reason; partial = !!r.partial;
+        status = r.status; reason = r.reason; partial = !!r.partial; nowR = r;
       } else if (s === "drop") {
         closeOverlay();
         await new Promise(r => setTimeout(r, 60));
         status = "dropped"; reason = await askReason(d.title);
       } else closeOverlay();
       const prev = store.setStatus(d, s === "clear" ? null : status, reason);
+      logNow(d, nowR);
       toast(s === "clear" ? "Removido das listas" : `Marcado: ${STATUS_TXT[status]}`, "Desfazer", () => { store.restore(d.k, prev); ctx.refresh && ctx.refresh(); });
       ctx.refresh && ctx.refresh();
       ctx.onRated && ctx.onRated(d, s === "clear" ? null : status);
@@ -649,7 +678,7 @@
     const t = S.tv[d.k];
     if (t && /^(Ended|Canceled)$/.test(t.st)) {
       await new Promise(r => setTimeout(r, 80));
-      const r = await askWatched(d.title);
+      const r = await askWatched(d.title, null, { noNow: true });
       if (r) { store.setStatus(d, r.status, r.reason); toast(`Marcado: ${STATUS_TXT[r.status]}`); }
     } else toast(`Você está em dia com ${d.title}`);
   }
@@ -659,10 +688,11 @@
     const rec = S.items[k], ne = store.nextEp(k); if (!rec || !ne) return;
     const wasC = isComplete(k);
     store.setEps(k, ne[0], [ne[1]], true);
+    const entry = store.logWatch(rec, { kind: "ep", s: ne[0], e: ne[1] });
     store.markToday();
     await afterProgress(rec, wasC);
     if (S.items[k] && S.items[k].status === "watching" && !isComplete(k)) {
-      toast(`Marcado: ${epLabel(ne)}`, "Desfazer", () => { store.setEps(k, ne[0], [ne[1]], false); afterProgress(rec, false); refresh && refresh(); });
+      toast(`Marcado: ${epLabel(ne)}`, "Desfazer", () => { store.setEps(k, ne[0], [ne[1]], false); store.unlog(x => x.id === entry.id); afterProgress(rec, false); refresh && refresh(); });
     }
     refresh && refresh();
   }
@@ -675,7 +705,8 @@
       const t = S.tv[d.k];
       if (!t || !t.sn.length) { box.innerHTML = ""; return; }
       const p = S.prog[d.k] || {}, { done, total } = store.progOf(d.k), today = dayKey();
-      box.innerHTML = `<div class="eps-h"><h3>Episódios</h3><span>${done} de ${total} vistos</span></div>` + t.sn.map(([n, c]) => {
+      box.innerHTML = `<div class="eps-h"><h3>Episódios</h3><span>${done} de ${total} vistos</span></div>
+        <div class="eps-when"><span>Ao marcar, registrar no Histórico:</span><button data-w="1" class="${U.epNow ? "on" : ""}">Agora</button><button data-w="0" class="${U.epNow ? "" : "on"}">Sem data</button></div>` + t.sn.map(([n, c]) => {
         const a = store.airedOf(d.k, n, c), w = Math.min(a, (p[n] || []).length), full = a > 0 && w >= a;
         let eps = "";
         if (open.has(n)) {
@@ -693,12 +724,25 @@
     };
     const change = async (n, eps, on) => {
       const wasC = isComplete(d.k);
+      const had = new Set((S.prog[d.k] || {})[n] || []);
       store.setEps(d.k, n, eps, on);
+      if (on && U.epNow) {
+        const fresh = eps.filter(e => !had.has(e));
+        if (fresh.length === 1) store.logWatch(d, { kind: "ep", s: n, e: fresh[0] });
+        else if (fresh.length > 1) store.logWatch(d, { kind: "season", s: n, n: fresh.length });
+        if (fresh.length) store.markToday();
+      }
+      if (!on) {
+        const left = (S.prog[d.k] || {})[n] || [];
+        store.unlog(x => x.k === d.k && x.s === n && ((x.kind === "ep" && eps.includes(x.e)) || (x.kind === "season" && !left.length)));
+      }
       draw();
       await afterProgress(d, wasC);
       lab(); draw(); ctx.refresh && ctx.refresh();
     };
     box.onclick = async ev => {
+      const wb = ev.target.closest("[data-w]");
+      if (wb) { U.epNow = wb.dataset.w === "1"; return draw(); }
       const x = ev.target.closest("[data-exp],[data-all],[data-ep]"); if (!x) return;
       const t = S.tv[d.k]; if (!t) return;
       if (x.dataset.exp) {
@@ -916,13 +960,14 @@
     }
     if (!it) return;
     if (a === "open") return openDetail(it, { refresh: drawToday });
-    let status, reason = "", partial = false;
+    let status, reason = "", partial = false, nowR = null;
     if (a === "seen") {
       const r = await askWatched(it.title, it);
       if (!r) return;
-      status = r.status; reason = r.reason; partial = !!r.partial;
+      status = r.status; reason = r.reason; partial = !!r.partial; nowR = r;
     } else status = a === "want" ? "want" : "dislike";
     const prev = store.setStatus(it, status, reason);
+    logNow(it, nowR);
     toast(`Marcado: ${STATUS_TXT[status]}`, "Desfazer", () => { store.restore(it.k, prev); drawToday(); });
     drawToday();
     if (partial) openLater(it, drawToday);
@@ -1191,6 +1236,7 @@
       const it = items.find(i => i.k === q.dataset.seen); if (!it) return;
       const r = await askWatched(it.title, it); if (!r) return;
       const prev = store.setStatus(it, r.status, r.reason);
+      logNow(it, r);
       toast(`Marcado: ${STATUS_TXT[r.status]}`, "Desfazer", () => { store.restore(it.k, prev); drawPerson(kw); });
       drawPerson(kw);
       if (r.partial) openLater(it, () => drawPerson(kw));
@@ -1378,6 +1424,95 @@
   /* =========================================================
      LISTAS
      ========================================================= */
+  /* ---------- histórico ---------- */
+  U.histN = 40;
+  function logEntries(type) {
+    const rows = S.log.filter(e => S.items[e.k] && S.items[e.k].type === type)
+      .sort((a, b) => b.d.localeCompare(a.d) || b.ts - a.ts);
+    const logged = new Set(S.log.map(e => e.k));
+    const nodate = Object.values(S.items).filter(i => i.type === type && (i.status === "liked" || i.status === "disliked") && !logged.has(i.k))
+      .sort((a, b) => b.at - a.at);
+    return { rows, nodate };
+  }
+  function dayLabel(d) {
+    const t = dayKey(), y = new Date(); y.setDate(y.getDate() - 1);
+    if (d === t) return "Hoje";
+    if (d === `${y.getFullYear()}-${pad2(y.getMonth() + 1)}-${pad2(y.getDate())}`) return "Ontem";
+    const [yy, m, dd] = d.split("-").map(Number);
+    return new Date(yy, m - 1, dd).toLocaleDateString("pt-BR", { day: "numeric", month: "long", year: "numeric" });
+  }
+  function histRow(it, sub, id) {
+    return `<button class="hrow" data-h="${id}"><img src="${tmdb.img(it.poster, "w185")}" alt="" loading="lazy"><div class="body"><h3>${esc(it.title)}</h3><div class="meta">${sub}</div></div><span class="chev">${IC.chev}</span></button>`;
+  }
+  function histHTML(h) {
+    if (!h.rows.length && !h.nodate.length) return `<p class="muted" style="margin-top:24px">O Histórico começa a ser preenchido quando você marca algo como assistido e responde "Foi agora?", ou usa o botão "Vi T1E2".</p>`;
+    let out = "", last = "";
+    h.rows.slice(0, U.histN).forEach(e => {
+      const it = S.items[e.k];
+      if (e.d !== last) { out += `<div class="hday">${dayLabel(e.d)}</div>`; last = e.d; }
+      const st = it.status === "liked" ? " · Gostei" : it.status === "disliked" ? " · Não gostei" : "";
+      const sub = e.kind === "ep" ? `T${e.s} · E${e.e}<span class="nm" data-nm="${it.id}:${e.s}:${e.e}"></span>`
+        : e.kind === "season" ? `Temporada ${e.s} · ${e.n} episódio${e.n > 1 ? "s" : ""}`
+        : (it.type === "tv" ? "Série completa" : "Filme" + (it.year ? ` · ${esc(it.year)}` : "")) + st;
+      out += histRow(it, sub, e.id);
+    });
+    if (h.rows.length > U.histN) out += `<button class="btn block" id="hMore" style="margin:14px 0">Ver mais</button>`;
+    if (h.nodate.length) {
+      out += `<div class="hday">Sem data <small>(toque para colocar a data)</small></div>`;
+      h.nodate.forEach(it => { out += histRow(it, (it.type === "tv" ? "Série" : "Filme") + (it.year ? ` · ${esc(it.year)}` : "") + (it.status === "liked" ? " · Gostei" : " · Não gostei"), "k:" + it.k); });
+    }
+    return out;
+  }
+  function histBind(h) {
+    const root = $("#ll");
+    root.onclick = e => {
+      if (e.target.closest("#hMore")) { U.histN += 40; return renderLists(); }
+      const b = e.target.closest("[data-h]"); if (!b) return;
+      const id = b.dataset.h;
+      histEdit(id.startsWith("k:") ? { item: S.items[id.slice(2)] } : { entry: S.log.find(x => x.id === id) });
+    };
+    // nomes dos episódios (busca por temporada, uma vez só)
+    const need = new Map();
+    $$("[data-nm]", root).forEach(el => { const [id, sn] = el.dataset.nm.split(":"); need.set(id + ":" + sn, [id, sn]); });
+    need.forEach(async ([id, sn]) => {
+      try {
+        const r = await tmdb.get(`/tv/${id}/season/${sn}`);
+        $$(`[data-nm^="${id}:${sn}:"]`, root).forEach(el => {
+          const ep = (r.episodes || []).find(x => x.episode_number === +el.dataset.nm.split(":")[2]);
+          if (ep && ep.name) el.textContent = " - " + ep.name;
+        });
+      } catch (err) { /* sem nome */ }
+    });
+  }
+  function histEdit(ref) {
+    const e = ref.entry, it = ref.item || (e && S.items[e.k]); if (!it) return;
+    const what = !e ? "Sem data" : e.kind === "ep" ? `T${e.s} · E${e.e}` : e.kind === "season" ? `Temporada ${e.s} completa` : (it.type === "tv" ? "Série completa" : "Filme");
+    const ov = openOverlay(`
+      <div class="modal">
+        <h2>${esc(it.title)}</h2>
+        <p>${esc(what)}</p>
+        <label class="muted small" for="hd" style="display:block;text-align:left;margin:4px 0 6px">Data em que assistiu</label>
+        <input type="date" id="hd" class="dateinp" value="${e ? e.d : dayKey()}" max="${dayKey()}">
+        <div class="two" style="margin-top:14px">
+          <button class="btn primary" id="hSave">Salvar data</button>
+          <button class="btn" id="hNow">Foi hoje</button>
+        </div>
+        ${e ? `<button class="btn wide3" id="hDel" style="margin-top:10px">${IC.trash} Tirar do histórico</button>` : ""}
+        <button class="cancel" id="hX">Fechar</button>
+      </div>`, { center: true });
+    const save = date => {
+      if (!date) return toast("Escolha uma data.");
+      if (e) { e.d = date; e.ts = new Date(date + "T12:00:00").getTime(); store.save(); }
+      else store.logWatch(it, { kind: "title" }, date);
+      if (date === dayKey()) store.markToday();
+      closeOverlay(); renderLists();
+    };
+    $("#hSave", ov).onclick = () => save($("#hd", ov).value);
+    $("#hNow", ov).onclick = () => save(dayKey());
+    const del = $("#hDel", ov); if (del) del.onclick = () => { store.unlog(x => x.id === e.id); closeOverlay(); renderLists(); };
+    $("#hX", ov).onclick = () => closeOverlay();
+  }
+
   function renderLists() {
     U.listType = U.listType || S.type || "movie";
     if (U.listType === "movie" && U.listTab === "watching") U.listTab = "want";
@@ -1385,11 +1520,14 @@
     const groups = {
       want: { n: "Quero ver", f: i => i.status === "want", ic: IC.heart },
       watching: { n: "Assistindo", f: i => i.status === "watching", ic: IC.play },
+      hist: { n: "Histórico", f: () => false, ic: IC.history },
       watched: { n: "Assistidos", f: i => i.status === "liked" || i.status === "disliked" || i.status === "dropped", ic: IC.check },
       dropped: { n: "Desisti", f: i => i.status === "dropped", ic: IC.pause },
       nope: { n: "Não gostei", f: i => i.status === "dislike" || i.status === "disliked", ic: IC.thumbDown }
     };
     Object.values(groups).forEach(v => (v.c = base.filter(v.f).length));
+    const hist = logEntries(U.listType);
+    groups.hist.c = hist.rows.length + hist.nodate.length;
     const g = groups[U.listTab];
     const items = base.filter(g.f).sort((a, b) => (b.last || b.at) - (a.last || a.at));
     screen.innerHTML = `
@@ -1397,17 +1535,18 @@
       <h1>Minhas listas</h1>
       <div class="seg" id="ltype" style="margin:10px 0 4px">${[["movie", "Filmes"], ["tv", "Séries"]].map(([k, n]) => `<button data-t="${k}" class="${k === U.listType ? "on" : ""}">${n}</button>`).join("")}</div>
       <div class="tabs" id="lt" style="margin-top:12px">${Object.entries(groups).filter(([k]) => k !== "watching" || U.listType === "tv").map(([k, v]) => `<button class="chip ${k === U.listTab ? "solid" : ""}" data-l="${k}">${v.ic.replace("<svg", '<svg width="16" height="16"')} ${v.n} (${v.c})</button>`).join("")}</div>
-      <div class="list" id="ll">${items.length ? items.map(it => U.listTab === "watching" ? nextRow(it) : U.listTab === "want" ? `<div class="row-wrap">${rowHTML(it)}${isUnreleased(it) ? `<span class="quick-ph"></span>` : `<button class="quick" data-seen="${it.k}" aria-label="Já assisti">${IC.check}<span>Assisti</span></button>`}</div>` : rowHTML(it)).join("") : `<p class="muted" style="margin-top:24px">Nada aqui ainda. ${U.listTab === "want" ? "Arraste cartões para a direita no Início." : U.listTab === "watching" ? "Abra uma série e marque os episódios que já viu." : "Marque o que já assistiu no Início ou na Busca."}</p>`}</div>`;
+      <div class="list" id="ll">${U.listTab === "hist" ? histHTML(hist) : items.length ? items.map(it => U.listTab === "watching" ? nextRow(it) : U.listTab === "want" ? `<div class="row-wrap">${rowHTML(it)}${isUnreleased(it) ? `<span class="quick-ph"></span>` : `<button class="quick" data-seen="${it.k}" aria-label="Já assisti">${IC.check}<span>Assisti</span></button>`}</div>` : rowHTML(it)).join("") : `<p class="muted" style="margin-top:24px">Nada aqui ainda. ${U.listTab === "want" ? "Arraste cartões para a direita no Início." : U.listTab === "watching" ? "Abra uma série e marque os episódios que já viu." : "Marque o que já assistiu no Início ou na Busca."}</p>`}</div>`;
     $("#ltype").onclick = e => { const b = e.target.closest("[data-t]"); if (b) { U.listType = b.dataset.t; renderLists(); } };
     $("#lt").onclick = e => { const b = e.target.closest("[data-l]"); if (b) { U.listTab = b.dataset.l; renderLists(); } };
     bindRows($("#ll"), items, renderLists);
+    if (U.listTab === "hist") histBind(hist);
     $("#ll").addEventListener("click", async e => {
       const nx = e.target.closest("[data-nx]"); if (nx) return markNext(nx.dataset.nx, renderLists);
       const q = e.target.closest("[data-seen]"); if (!q) return;
       const it = items.find(i => i.k === q.dataset.seen); if (!it) return;
       const r = await askWatched(it.title, it); if (!r) return;
       const prev = store.setStatus(it, r.status, r.reason);
-      if (!r.partial) store.markToday();
+      logNow(it, r);
       toast(`Marcado: ${STATUS_TXT[r.status]}`, "Desfazer", () => { store.restore(it.k, prev); renderLists(); });
       renderLists();
       if (r.partial) openLater(it, renderLists);
@@ -1513,7 +1652,7 @@
   /* =========================================================
      INÍCIO DO APP
      ========================================================= */
-  UD.VERSION = "1.7.0";
+  UD.VERSION = "1.8.0";
   function start() {
     const sv = $("#spVer"); if (sv) sv.textContent = "versão " + UD.VERSION;
     if (!S.apiKey) renderWelcome();
