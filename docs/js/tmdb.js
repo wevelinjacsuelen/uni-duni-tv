@@ -102,6 +102,15 @@
     it.keywordNames = kws.map(k => k.name);
     it.runtime = type === "movie" ? d.runtime || 0 : (d.episode_run_time && d.episode_run_time[0]) || 0;
     it.seasons = d.number_of_seasons || 0;
+    if (type === "tv") {
+      const L = d.last_episode_to_air, N = d.next_episode_to_air;
+      UD.S.tv[it.k] = {
+        sn: (d.seasons || []).filter(x => x.season_number > 0).map(x => [x.season_number, x.episode_count || 0]),
+        L: L ? [L.season_number, L.episode_number] : null,
+        st: d.status || "",
+        nx: N ? { d: N.air_date, s: N.season_number, e: N.episode_number } : null
+      };
+    }
     it.imdb = d.imdb_id || (d.external_ids && d.external_ids.imdb_id) || "";
     it.cast = ((d.credits && d.credits.cast) || []).slice(0, 4).map(c => c.name);
     if (!it.overview) {

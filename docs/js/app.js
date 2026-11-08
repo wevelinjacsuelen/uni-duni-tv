@@ -25,6 +25,7 @@
     thumbUp: I('<path d="M7 11v9H4v-9zM7 11l4-8c1.7 0 3 1.3 3 3v3h5.2a2 2 0 0 1 2 2.3l-1.2 7A2 2 0 0 1 18 20H7"/>'),
     thumbDown: I('<path d="M7 13V4H4v9zM7 13l4 8c1.7 0 3-1.3 3-3v-3h5.2a2 2 0 0 0 2-2.3l-1.2-7A2 2 0 0 0 18 4H7"/>'),
     clap: I('<rect x="3" y="9" width="18" height="12" rx="2"/><path d="M3 9l1.5-5 16 3.5L21 9M8 4.5l2 4.2M13 5.6l2 3.4"/><path d="M10 13l5 2.5-5 2.5z" fill="currentColor"/>'),
+    play: I('<path d="M7 4l13 8-13 8z"/>'),
     plus: I('<path d="M12 5v14M5 12h14"/>'),
     edit: I('<path d="M4 20h4L19 9l-4-4L4 16z"/>'),
     down: I('<path d="M12 4v12M6 10l6 6 6-6M4 20h16"/>'),
@@ -66,10 +67,19 @@
     return parts.map(p => `<span>${p}</span>`).join('<span class="dot"></span>');
   }
   const ratingPill = v => v ? `<span class="rating">${IC.star}${String(v.toFixed ? v.toFixed(1) : v).replace(".", ",")}</span>` : "";
-  const STATUS_TXT = { want: "Quero ver", liked: "Assisti e gostei", disliked: "Assisti e não gostei", dropped: "Desisti no meio", dislike: "Não gosto" };
+  const STATUS_TXT = { want: "Quero ver", watching: "Assistindo", liked: "Assisti e gostei", disliked: "Assisti e não gostei", dropped: "Desisti no meio", dislike: "Não gosto" };
   const REASONS = [["repetitivo", "Ficou repetitivo"], ["enrolou", "Enrolou ou perdeu a graça"], ["parei", "Parei e nunca voltei"], ["cancelada", "Foi cancelada"]];
   const REASON_TXT = Object.fromEntries(REASONS);
-  const statusText = r => r.status === "dropped" && r.reason && REASON_TXT[r.reason] ? `Desisti: ${REASON_TXT[r.reason].toLowerCase()}` : STATUS_TXT[r.status];
+  const epLabel = ne => `T${ne[0]}E${ne[1]}`;
+  function statusText(r) {
+    if (r.status === "watching" && r.type === "tv") {
+      const { done, total } = store.progOf(r.k), ne = store.nextEp(r.k);
+      if (!total) return "Assistindo";
+      return `Assistindo: ${done} de ${total}` + (ne ? ` · próximo ${epLabel(ne)}` : " · em dia");
+    }
+    return statusText0(r);
+  }
+  const statusText0 = r => r.status === "dropped" && r.reason && REASON_TXT[r.reason] ? `Desisti: ${REASON_TXT[r.reason].toLowerCase()}` : STATUS_TXT[r.status];
 
   let toastTimer;
   function toast(msg, action, fn, ms = 4000) {
@@ -562,7 +572,7 @@
     if (!it) return;
     const ov = openOverlay(`<div class="sheet" id="det"><div class="grab"></div><div style="display:grid;place-items:center;padding:60px"><div class="spinner"></div></div></div>`);
     let d = it;
-    if (it.runtime === undefined && it.seasons === undefined) {
+    if ((it.runtime === undefined && it.seasons === undefined) || (it.type === "tv" && !S.tv[it.k])) {
       try { d = Object.assign({}, it, await tmdb.details(it.type, it.id)); store.save(); } catch (e) { /* mostra o que tem */ }
     }
     const sheet = $("#det", ov); if (!sheet) return;
@@ -581,12 +591,14 @@
       <h2>${esc(d.title)}</h2>
       ${d.original && d.original !== d.title ? `<div class="muted small">${esc(d.original)}</div>` : ""}
       <div class="meta" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:6px;color:var(--muted);font-size:14px">${metaLine(d, true)}${d.vote ? `<span class="dot" style="width:3px;height:3px;border-radius:50%;background:currentColor"></span>${ratingPill(d.vote)}` : ""}</div>
-      ${rec ? `<div class="status small" style="color:var(--amber-2);margin-top:6px">Na sua lista: ${statusText(rec)}</div>` : ""}
+      <div class="status small" id="stLab" style="color:var(--amber-2);margin-top:6px">${rec ? `Na sua lista: ${statusText(rec)}` : ""}</div>
       <div class="detail-genres">${gnames.map(n => `<span>${esc(n)}</span>`).join("")}</div>
       <div class="detail-ov">${d.overview ? esc(d.overview) : "Sinopse não disponível."}${d.overviewEn ? ' <span class="muted small">(sinopse só em inglês)</span>' : ""}</div>
       ${d.cast && d.cast.length ? `<div class="cast">Com ${esc(d.cast.join(", "))}</div>` : ""}
+      ${d.type === "tv" ? `<div id="eps"></div>` : ""}
       <div class="detail-actions">${buttons}${d.imdb ? `<a class="btn ghost wide" href="https://www.imdb.com/title/${esc(d.imdb)}/" target="_blank" rel="noopener" style="text-decoration:none;grid-column:span 2">Ver no IMDb ↗</a>` : ""}</div>`;
 
+    if (d.type === "tv") initEps(sheet, d, ctx);
     $$("[data-d]", sheet).forEach(b => b.onclick = () => {
       const a = b.dataset.d; closeOverlay(); setTimeout(() => act(a), 60);
     });
@@ -605,6 +617,94 @@
       ctx.refresh && ctx.refresh();
       ctx.onRated && ctx.onRated(d, s === "clear" ? null : status);
     });
+  }
+
+  /* ---------- episódios (série) ---------- */
+  async function afterProgress(d, wasComplete) {
+    const rec = S.items[d.k];
+    const { done, total } = store.progOf(d.k);
+    if (done > 0 && (!rec || rec.status === "want" || rec.status === "dislike")) store.setStatus(d, "watching");
+    else if (done === 0 && rec && rec.status === "watching") store.setStatus(d, "want");
+    const now = S.items[d.k];
+    const complete = total > 0 && done >= total;
+    if (!complete || wasComplete || !now || now.status !== "watching") return;
+    const t = S.tv[d.k];
+    if (t && /^(Ended|Canceled)$/.test(t.st)) {
+      await new Promise(r => setTimeout(r, 80));
+      const r = await askWatched(d.title);
+      if (r) { store.setStatus(d, r.status, r.reason); toast(`Marcado: ${STATUS_TXT[r.status]}`); }
+    } else toast(`Você está em dia com ${d.title}`);
+  }
+  const isComplete = k => { const p = store.progOf(k); return p.total > 0 && p.done >= p.total; };
+
+  async function markNext(k, refresh) {
+    const rec = S.items[k], ne = store.nextEp(k); if (!rec || !ne) return;
+    const wasC = isComplete(k);
+    store.setEps(k, ne[0], [ne[1]], true);
+    await afterProgress(rec, wasC);
+    if (S.items[k] && S.items[k].status === "watching" && !isComplete(k)) {
+      toast(`Marcado: ${epLabel(ne)}`, "Desfazer", () => { store.setEps(k, ne[0], [ne[1]], false); afterProgress(rec, false); refresh && refresh(); });
+    }
+    refresh && refresh();
+  }
+
+  function initEps(sheet, d, ctx) {
+    const box = $("#eps", sheet); if (!box) return;
+    const open = new Set(), sd = {}, loading = new Set();
+    const lab = () => { const r = S.items[d.k], el = $("#stLab", sheet); if (el) el.textContent = r ? `Na sua lista: ${statusText(r)}` : ""; };
+    const draw = () => {
+      const t = S.tv[d.k];
+      if (!t || !t.sn.length) { box.innerHTML = ""; return; }
+      const p = S.prog[d.k] || {}, { done, total } = store.progOf(d.k), today = dayKey();
+      box.innerHTML = `<div class="eps-h"><h3>Episódios</h3><span>${done} de ${total} vistos</span></div>` + t.sn.map(([n, c]) => {
+        const a = store.airedOf(d.k, n, c), w = Math.min(a, (p[n] || []).length), full = a > 0 && w >= a;
+        let eps = "";
+        if (open.has(n)) {
+          eps = loading.has(n) ? `<div class="ss-eps"><div style="display:grid;place-items:center;padding:14px"><div class="spinner"></div></div></div>`
+            : `<div class="ss-eps">${(sd[n] || []).map(e => {
+              const aired = e.date && e.date <= today, on = (p[n] || []).includes(e.n);
+              return `<button class="ep ${on ? "on" : ""}" data-ep="${n}:${e.n}" ${aired ? "" : "disabled"}><span class="bx">${on ? IC.check : ""}</span><span class="en">${e.n}. ${esc(e.name)}</span><span class="ed">${aired ? e.date.split("-").reverse().join("/") : "em breve"}</span></button>`;
+            }).join("") || `<p class="muted small" style="margin:8px 0">Não consegui carregar os episódios.</p>`}</div>`;
+        }
+        return `<div class="ss ${open.has(n) ? "open" : ""}"><div class="ss-row">
+          <button class="ss-h" data-exp="${n}"><span class="ss-t">Temporada ${n}</span><span class="ss-c">${a ? `${w} de ${a}` : "em breve"}</span><span class="chev">${IC.chev}</span></button>
+          <button class="ss-all ${full ? "on" : ""}" data-all="${n}" ${a ? "" : "disabled"} aria-label="Marcar temporada inteira">${IC.check}</button></div>
+          <div class="ss-bar"><i style="width:${a ? Math.round(100 * w / a) : 0}%"></i></div>${eps}</div>`;
+      }).join("");
+    };
+    const change = async (n, eps, on) => {
+      const wasC = isComplete(d.k);
+      store.setEps(d.k, n, eps, on);
+      draw();
+      await afterProgress(d, wasC);
+      lab(); draw(); ctx.refresh && ctx.refresh();
+    };
+    box.onclick = async ev => {
+      const x = ev.target.closest("[data-exp],[data-all],[data-ep]"); if (!x) return;
+      const t = S.tv[d.k]; if (!t) return;
+      if (x.dataset.exp) {
+        const n = +x.dataset.exp;
+        if (open.has(n)) { open.delete(n); return draw(); }
+        open.add(n);
+        if (!sd[n]) {
+          loading.add(n); draw();
+          try {
+            const r = await tmdb.get(`/tv/${d.id}/season/${n}`);
+            sd[n] = (r.episodes || []).map(e => ({ n: e.episode_number, name: e.name || `Episódio ${e.episode_number}`, date: e.air_date || "" }));
+          } catch (e) { sd[n] = []; }
+          loading.delete(n);
+        }
+        return draw();
+      }
+      if (x.dataset.all) {
+        const n = +x.dataset.all, c = t.sn.find(s => s[0] === n)[1], a = store.airedOf(d.k, n, c);
+        const have = (S.prog[d.k] || {})[n] || [];
+        return change(n, Array.from({ length: a }, (_, i) => i + 1), have.length < a);
+      }
+      const [n, e] = x.dataset.ep.split(":").map(Number);
+      change(n, [e], !((S.prog[d.k] || {})[n] || []).includes(e));
+    };
+    draw();
   }
 
   /* =========================================================
@@ -664,8 +764,10 @@
     body.onclick = e => {
       const b = e.target.closest("[data-td]");
       if (b) { const [a, t] = b.dataset.td.split(":"); return tdAct(a, t); }
+      const nx = e.target.closest("[data-nx]");
+      if (nx) return markNext(nx.dataset.nx, drawToday);
       const r = e.target.closest(".row-item");
-      if (r) { const it = U.today.histItems.find(i => i.k === r.dataset.k); if (it) openDetail(it, { refresh: drawToday }); }
+      if (r) { const it = U.today.histItems.find(i => i.k === r.dataset.k) || S.items[r.dataset.k]; if (it) openDetail(it, { refresh: drawToday }); }
     };
     drawToday();
     ensureToday("movie"); ensureToday("tv");
@@ -697,6 +799,17 @@
     </div>`;
   }
 
+  function nextRow(it) {
+    const ne = store.nextEp(it.k);
+    return `<div class="row-wrap">${rowHTML(it)}${ne ? `<button class="quick" data-nx="${it.k}" aria-label="Vi ${epLabel(ne)}">${IC.check}<span>Vi ${epLabel(ne)}</span></button>` : ""}</div>`;
+  }
+  function continueHTML() {
+    const w = Object.values(S.items).filter(i => i.status === "watching" && i.type === "tv" && store.nextEp(i.k))
+      .sort((a, b) => (b.last || b.at) - (a.last || a.at)).slice(0, 4);
+    if (!w.length) return "";
+    return `<div class="section-h" style="margin-top:0"><h2>Continue de onde parou</h2></div><div class="list" style="margin-bottom:22px">${w.map(nextRow).join("")}</div>`;
+  }
+
   function historyHTML() {
     const today = dayKey();
     const now = new Date(); const t0 = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -717,7 +830,7 @@
   function drawToday() {
     const body = $("#tdBody"); if (!body) return;
     const day = S.daily[dayKey()] || {};
-    body.innerHTML = todayCard("movie", day.movie) + todayCard("tv", day.tv) + historyHTML() +
+    body.innerHTML = continueHTML() + todayCard("movie", day.movie) + todayCard("tv", day.tv) + historyHTML() +
       `<p class="note" style="margin-top:20px">A sugestão muda todo dia. A que você não viu fica em "Dias anteriores", sem contar como "não gosto".</p>`;
   }
 
@@ -869,9 +982,11 @@
     if (!q.trim()) {
       box.innerHTML = `${shortcutsHTML()}
         <div class="section-h"><h2>Temas populares</h2></div>
-        <div class="chips wrap" id="pop">${UD.POPULAR_THEMES.map(t => `<button class="chip" data-pt="${esc(t)}">${esc(t)}</button>`).join("")}</div>`;
+        <div class="chips wrap" id="pop">${UD.POPULAR_THEMES.map(t => `<button class="chip" data-pt="${esc(t)}">${esc(t)}</button>`).join("")}</div>
+        <div id="trend"></div>`;
       bindShortcuts($(".shortcuts", box));
       $("#pop").onclick = onThemeChip;
+      drawTrend(seq);
       return;
     }
 
@@ -906,6 +1021,26 @@
     } catch (e) {
       if (seq === U.search.seq) $("#titles").innerHTML = `<p class="err">${esc(e.message)}</p>`;
     }
+  }
+
+  /* ---------- em alta (o que está bombando no TMDB esta semana) ---------- */
+  async function drawTrend(seq) {
+    const box = $("#trend"); if (!box) return;
+    box.innerHTML = `<div style="display:grid;place-items:center;padding:24px"><div class="spinner"></div></div>`;
+    let rows;
+    try {
+      rows = await Promise.all(["movie", "tv"].map(async t => tmdb.list(await tmdb.get(`/trending/${t}/week`), t).filter(i => i.poster && !S.items[i.k] && !engine.seen(i.k)).slice(0, 14)));
+    } catch (e) { if (seq === U.search.seq && $("#trend")) $("#trend").innerHTML = ""; return; }
+    if (seq !== U.search.seq || !$("#trend")) return;
+    const all = rows[0].concat(rows[1]);
+    const strip = (title, items) => items.length ? `<div class="section-h"><h2>${title}</h2></div><div class="sim-row">${items.map(it => `<button class="sim-card" data-k="${it.k}"><img src="${tmdb.img(it.poster, "w342")}" alt="" loading="lazy"><div class="cap"><b>${esc(it.title)}</b><span>${it.vote ? "★ " + String(it.vote.toFixed(1)).replace(".", ",") : ""}</span></div></button>`).join("")}</div>` : "";
+    const t = $("#trend");
+    t.innerHTML = strip("Filmes em alta", rows[0]) + strip("Séries em alta", rows[1]);
+    t.onclick = e => {
+      const c = e.target.closest(".sim-card"); if (!c) return;
+      const it = all.find(i => i.k === c.dataset.k);
+      if (it) openDetail(it, { refresh: () => drawSearch(), onRated: rateSimilar });
+    };
   }
 
   async function onThemeChip(e) {
@@ -1071,20 +1206,22 @@
     const c = store.counts();
     const groups = {
       want: { n: "Quero ver", f: i => i.status === "want", c: c.want, ic: IC.heart },
+      watching: { n: "Assistindo", f: i => i.status === "watching", c: c.watching, ic: IC.play },
       watched: { n: "Assistidos", f: i => i.status === "liked" || i.status === "disliked" || i.status === "dropped", c: c.watched, ic: IC.check },
       dropped: { n: "Desisti", f: i => i.status === "dropped", c: c.dropped, ic: IC.pause },
       nope: { n: "Não gostei", f: i => i.status === "dislike" || i.status === "disliked", c: c.rejected, ic: IC.thumbDown }
     };
     const g = groups[U.listTab];
-    const items = Object.values(S.items).filter(g.f).sort((a, b) => b.at - a.at);
+    const items = Object.values(S.items).filter(g.f).sort((a, b) => (b.last || b.at) - (a.last || a.at));
     screen.innerHTML = `
       <div class="topbar">${WM}</div>
       <h1>Minhas listas</h1>
       <div class="tabs" id="lt">${Object.entries(groups).map(([k, v]) => `<button class="chip ${k === U.listTab ? "solid" : ""}" data-l="${k}">${v.ic.replace("<svg", '<svg width="16" height="16"')} ${v.n} (${v.c})</button>`).join("")}</div>
-      <div class="list" id="ll">${items.length ? items.map(it => U.listTab === "want" ? `<div class="row-wrap">${rowHTML(it)}<button class="quick" data-seen="${it.k}" aria-label="Já assisti">${IC.check}<span>Assisti</span></button></div>` : rowHTML(it)).join("") : `<p class="muted" style="margin-top:24px">Nada aqui ainda. ${U.listTab === "want" ? "Arraste cartões para a direita no Início." : "Marque o que já assistiu no Início ou na Busca."}</p>`}</div>`;
+      <div class="list" id="ll">${items.length ? items.map(it => U.listTab === "watching" ? nextRow(it) : U.listTab === "want" ? `<div class="row-wrap">${rowHTML(it)}<button class="quick" data-seen="${it.k}" aria-label="Já assisti">${IC.check}<span>Assisti</span></button></div>` : rowHTML(it)).join("") : `<p class="muted" style="margin-top:24px">Nada aqui ainda. ${U.listTab === "want" ? "Arraste cartões para a direita no Início." : U.listTab === "watching" ? "Abra uma série e marque os episódios que já viu." : "Marque o que já assistiu no Início ou na Busca."}</p>`}</div>`;
     $("#lt").onclick = e => { const b = e.target.closest("[data-l]"); if (b) { U.listTab = b.dataset.l; renderLists(); } };
     bindRows($("#ll"), items, renderLists);
     $("#ll").addEventListener("click", async e => {
+      const nx = e.target.closest("[data-nx]"); if (nx) return markNext(nx.dataset.nx, renderLists);
       const q = e.target.closest("[data-seen]"); if (!q) return;
       const it = items.find(i => i.k === q.dataset.seen); if (!it) return;
       const r = await askWatched(it.title); if (!r) return;
@@ -1193,7 +1330,7 @@
   /* =========================================================
      INÍCIO DO APP
      ========================================================= */
-  UD.VERSION = "1.3.0";
+  UD.VERSION = "1.4.0";
   function start() {
     if (!S.apiKey) renderWelcome();
     else if (!S.onboarded) renderOnboarding();

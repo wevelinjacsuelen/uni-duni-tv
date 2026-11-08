@@ -491,3 +491,33 @@ select.sel {
 .sim-row::-webkit-scrollbar { display: none; }
 .sim-card { flex: none; width: 108px; text-align: left; }
 .sim-card img { width: 100%; aspect-ratio: 2/3; object-fit: cover; border-radius: 14px; background: var(--bg-2); border: 1px solid var(--line); }
+
+/* ---------- episódios ---------- */
+.eps-h { display: flex; align-items: baseline; justify-content: space-between; margin: 18px 0 8px; }
+.eps-h h3 { margin: 0; }
+.eps-h span { color: var(--muted); font-size: 13px; }
+.ss { border-bottom: 1px solid var(--line); padding: 4px 0 8px; }
+.ss-row { display: flex; align-items: center; gap: 8px; }
+.ss-h { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; padding: 10px 0; text-align: left; color: var(--text); }
+.ss-t { font-weight: 600; }
+.ss-c { margin-left: auto; color: var(--muted); font-size: 13px; }
+.ss-h .chev { width: 18px; height: 18px; color: var(--muted); transition: transform .2s; }
+.ss.open .ss-h .chev { transform: rotate(90deg); }
+.ss-all { flex: none; width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; background: var(--glass); border: 1px solid var(--line); color: var(--muted); }
+.ss-all svg { width: 20px; height: 20px; }
+.ss-all.on { background: linear-gradient(180deg, var(--amber-2), var(--amber)); color: #1a1206; border-color: transparent; }
+.ss-all:disabled { opacity: .35; }
+.ss-bar { height: 3px; border-radius: 3px; background: rgba(255,255,255,.08); overflow: hidden; }
+.ss-bar i { display: block; height: 100%; background: var(--amber); border-radius: 3px; }
+.ss-eps { margin-top: 6px; }
+.ep { width: 100%; display: flex; align-items: center; gap: 12px; padding: 10px 2px; text-align: left; color: var(--text); font-size: 14px; border-top: 1px solid rgba(255,255,255,.05); }
+.ep .bx { flex: none; width: 24px; height: 24px; border-radius: 7px; border: 1.5px solid rgba(255,255,255,.28); display: grid; place-items: center; }
+.ep .bx svg { width: 16px; height: 16px; color: #1a1206; }
+.ep.on .bx { background: var(--amber); border-color: var(--amber); }
+.ep .en { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ep .ed { flex: none; color: var(--muted); font-size: 12px; }
+.ep:disabled { opacity: .45; }
+.quick span { max-width: 56px; text-align: center; line-height: 1.15; }
+.sim-card .cap { padding: 6px 2px 0; }
+.sim-card .cap b { display: block; font-size: 12.5px; font-weight: 600; line-height: 1.25; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.sim-card .cap span { display: block; color: var(--muted); font-size: 11.5px; margin-top: 2px; }
