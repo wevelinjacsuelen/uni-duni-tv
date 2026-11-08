@@ -46,7 +46,7 @@
     deck: [], deckLoading: false, deckError: null, mode: null,
     ob: { type: "movie", genre: null, page: 1, items: [], open: null, loading: false },
     search: { q: "", kw: null, seq: 0, similar: null },
-    listTab: "want", listType: "all", today: { busy: {}, err: {}, histItems: [] },
+    listTab: "want", listType: null, today: { busy: {}, err: {}, histItems: [] },
     undo: null, backupNagged: false
   };
 
@@ -1259,7 +1259,9 @@
      LISTAS
      ========================================================= */
   function renderLists() {
-    const base = Object.values(S.items).filter(i => U.listType === "all" || i.type === U.listType);
+    U.listType = U.listType || S.type || "movie";
+    if (U.listType === "movie" && U.listTab === "watching") U.listTab = "want";
+    const base = Object.values(S.items).filter(i => i.type === U.listType);
     const groups = {
       want: { n: "Quero ver", f: i => i.status === "want", ic: IC.heart },
       watching: { n: "Assistindo", f: i => i.status === "watching", ic: IC.play },
@@ -1273,8 +1275,8 @@
     screen.innerHTML = `
       <div class="topbar">${WM}</div>
       <h1>Minhas listas</h1>
-      <div class="tabs" id="lt">${Object.entries(groups).map(([k, v]) => `<button class="chip ${k === U.listTab ? "solid" : ""}" data-l="${k}">${v.ic.replace("<svg", '<svg width="16" height="16"')} ${v.n} (${v.c})</button>`).join("")}</div>
-      <div class="tabs" id="ltype" style="margin:8px 0 4px">${[["all", "Tudo"], ["movie", "Filmes"], ["tv", "Séries"]].map(([k, n]) => `<button class="chip ${k === U.listType ? "on" : ""}" data-t="${k}">${n}</button>`).join("")}</div>
+      <div class="seg" id="ltype" style="margin:10px 0 4px">${[["movie", "Filmes"], ["tv", "Séries"]].map(([k, n]) => `<button data-t="${k}" class="${k === U.listType ? "on" : ""}">${n}</button>`).join("")}</div>
+      <div class="tabs" id="lt" style="margin-top:12px">${Object.entries(groups).filter(([k]) => k !== "watching" || U.listType === "tv").map(([k, v]) => `<button class="chip ${k === U.listTab ? "solid" : ""}" data-l="${k}">${v.ic.replace("<svg", '<svg width="16" height="16"')} ${v.n} (${v.c})</button>`).join("")}</div>
       <div class="list" id="ll">${items.length ? items.map(it => U.listTab === "watching" ? nextRow(it) : U.listTab === "want" ? `<div class="row-wrap">${rowHTML(it)}<button class="quick" data-seen="${it.k}" aria-label="Já assisti">${IC.check}<span>Assisti</span></button></div>` : rowHTML(it)).join("") : `<p class="muted" style="margin-top:24px">Nada aqui ainda. ${U.listTab === "want" ? "Arraste cartões para a direita no Início." : U.listTab === "watching" ? "Abra uma série e marque os episódios que já viu." : "Marque o que já assistiu no Início ou na Busca."}</p>`}</div>`;
     $("#ltype").onclick = e => { const b = e.target.closest("[data-t]"); if (b) { U.listType = b.dataset.t; renderLists(); } };
     $("#lt").onclick = e => { const b = e.target.closest("[data-l]"); if (b) { U.listTab = b.dataset.l; renderLists(); } };
@@ -1390,7 +1392,7 @@
   /* =========================================================
      INÍCIO DO APP
      ========================================================= */
-  UD.VERSION = "1.5.1";
+  UD.VERSION = "1.5.2";
   function start() {
     if (!S.apiKey) renderWelcome();
     else if (!S.onboarded) renderOnboarding();

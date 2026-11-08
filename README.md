@@ -22,7 +22,7 @@ Acesso: https://wevelinjacsuelen.github.io/uni-duni-tv
 
 **Buscar.** Procure por título ou por tema escrito do seu jeito (por exemplo "natal", "viagem no tempo"). Ao marcar um título da busca como "quero ver" ou "já assisti", aparece uma faixa "Parecidos com...". Também mostra os filmes e séries em alta da semana e permite criar atalhos pessoais, como "Domingo chuvoso", com gêneros, tema e duração.
 
-**Listas.** Quero ver, Assistindo, Assistidos, Desisti e Não gostei, com filtro por filmes ou séries.
+**Listas.** Quero ver, Assistindo (só séries), Assistidos, Desisti e Não gostei, com Filmes e Séries separados como no Início.
 
 **Perfil.** Seus gêneros favoritos, os que você evita, os motivos pelos quais você desiste de séries, e backup: exporte seu perfil para um arquivo e importe em outro aparelho.
 
