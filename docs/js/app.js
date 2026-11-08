@@ -265,17 +265,21 @@
                ${st ? `<button data-s="clear">Limpar</button>` : ""}
              </div>`;
       }
-      return `<div class="tile ${st ? "sel-" + st : ""}" data-k="${it.k}">
-        <img src="${tmdb.img(it.poster, "w342")}" alt="" loading="lazy">
-        ${menu ? "" : `<div class="t-title">${esc(it.title)}</div>`}
-        ${badge}${menu}</div>`;
+      const sub = [it.year, it.vote ? "★ " + String(it.vote.toFixed(1)).replace(".", ",") : ""].filter(Boolean).join(" · ");
+      return `<div class="cell" data-k="${it.k}">
+        <div class="tile ${st ? "sel-" + st : ""}">
+          <img src="${tmdb.img(it.poster, "w342")}" alt="" loading="lazy">
+          ${badge}${menu}
+        </div>
+        <div class="cap"><b>${esc(it.title)}</b><span>${esc(sub)}</span></div>
+      </div>`;
     }).join("");
     const n = store.counts().total;
     $("#obCount").textContent = n ? `${n} avaliado${n > 1 ? "s" : ""}${n < 10 ? ". Avalie pelo menos 10 para começar bem." : ". Ótimo, já dá para começar."}` : "Avalie pelo menos 10 para começar bem.";
   }
 
   function onTile(e) {
-    const tile = e.target.closest(".tile"); if (!tile) return;
+    const tile = e.target.closest(".cell"); if (!tile) return;
     const ob = U.ob, k = tile.dataset.k;
     const it = ob.items.find(i => i.k === k);
     const sb = e.target.closest("button[data-s]");
@@ -951,7 +955,7 @@
   /* =========================================================
      INÍCIO DO APP
      ========================================================= */
-  UD.VERSION = "1.0.2";
+  UD.VERSION = "1.0.3";
   function start() {
     if (!S.apiKey) renderWelcome();
     else if (!S.onboarded) renderOnboarding();
