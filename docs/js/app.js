@@ -592,6 +592,7 @@
       : `${rec && rec.status === "want" ? "" : `<button class="btn primary" data-s="want">${IC.heart} Quero ver</button>`}
          <button class="btn" data-s="seen">${IC.check} Já assisti</button>
          ${rec && rec.status === "dislike" ? "" : `<button class="btn" data-s="dislike">${IC.x} Não gosto</button>`}
+         ${d.type === "tv" && !(rec && rec.status === "dropped") ? `<button class="btn" data-s="drop">${IC.pause} Desisti desta série</button>` : ""}
          ${rec ? `<button class="btn danger" data-s="clear">${IC.trash} Tirar das listas</button>` : ""}`;
     sheet.innerHTML = `<div class="grab"></div>
       <div class="detail-hero"><img src="${tmdb.img(d.backdrop || d.poster, "w780")}" alt=""></div>
@@ -618,6 +619,10 @@
         const r = await askWatched(d.title, d);
         if (!r) return;
         status = r.status; reason = r.reason; partial = !!r.partial;
+      } else if (s === "drop") {
+        closeOverlay();
+        await new Promise(r => setTimeout(r, 60));
+        status = "dropped"; reason = await askReason(d.title);
       } else closeOverlay();
       const prev = store.setStatus(d, s === "clear" ? null : status, reason);
       toast(s === "clear" ? "Removido das listas" : `Marcado: ${STATUS_TXT[status]}`, "Desfazer", () => { store.restore(d.k, prev); ctx.refresh && ctx.refresh(); });
@@ -1469,7 +1474,7 @@
   /* =========================================================
      INÍCIO DO APP
      ========================================================= */
-  UD.VERSION = "1.6.1";
+  UD.VERSION = "1.6.2";
   function start() {
     const sv = $("#spVer"); if (sv) sv.textContent = "versão " + UD.VERSION;
     if (!S.apiKey) renderWelcome();
