@@ -1,6 +1,6 @@
 /* Uni Duni TV: guarda o app no celular para abrir rápido.
    Ao mudar qualquer arquivo do app, aumente a versão abaixo. */
-const VERSION = "udtv-1.6.3";
+const VERSION = "udtv-1.6.4";
 const SHELL = [
   "./", "index.html", "css/style.css", "manifest.webmanifest",
   "js/data.js", "js/store.js", "js/tmdb.js", "js/engine.js", "js/app.js",
@@ -9,7 +9,7 @@ const SHELL = [
 const IMG_CACHE = "udtv-img";
 
 self.addEventListener("install", e => {
-  e.waitUntil(caches.open(VERSION).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()));
+  e.waitUntil(caches.open(VERSION).then(c => c.addAll(SHELL.map(u => new Request(u, { cache: "reload" })))).then(() => self.skipWaiting()));
 });
 self.addEventListener("activate", e => {
   e.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(k => k !== VERSION && k !== IMG_CACHE).map(k => caches.delete(k)))).then(() => self.clients.claim()));
@@ -30,7 +30,7 @@ self.addEventListener("fetch", e => {
   if (url.hostname.endsWith("themoviedb.org")) return;
   // arquivos do app: internet primeiro (pega atualização), cópia guardada se estiver sem sinal
   if (url.origin === location.origin) {
-    e.respondWith(fetch(e.request).then(r => {
+    e.respondWith(fetch(e.request, { cache: "no-cache" }).then(r => {
       const copy = r.clone(); caches.open(VERSION).then(c => c.put(e.request, copy)); return r;
     }).catch(() => caches.match(e.request).then(r => r || caches.match("index.html"))));
   }

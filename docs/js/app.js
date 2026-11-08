@@ -1486,7 +1486,7 @@
   /* =========================================================
      INÍCIO DO APP
      ========================================================= */
-  UD.VERSION = "1.6.3";
+  UD.VERSION = "1.6.4";
   function start() {
     const sv = $("#spVer"); if (sv) sv.textContent = "versão " + UD.VERSION;
     if (!S.apiKey) renderWelcome();
