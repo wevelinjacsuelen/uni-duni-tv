@@ -78,18 +78,24 @@
       page: o.page || 1,
       "vote_count.gte": o.minVotes != null ? o.minVotes : 100
     };
-    const g = genreParam(o.genres, type);
+    let g = "", useKw = true;
+    if (o.allGenres && o.genres && o.genres.length) {
+      // precisa ter TODOS os gêneros (E). Se o tipo não tem algum deles (ex.: séries não têm "Romance"), usa só a palavra-chave
+      const per = o.genres.map(k => UD.GENRE_BY_KEY[k][type]);
+      if (per.some(a => !a.length)) { if (!(o.keywords && o.keywords.length)) return { results: [], total: 0, pages: 0 }; }
+      else { g = per.map(a => a[0]).join(","); useKw = false; }
+    } else g = genreParam(o.genres, type);
     if (g) p.with_genres = g;
     if (o.without && o.without.length) {
       const w = genreParam(o.without, type);
       if (w) p.without_genres = w.replace(/\|/g, ",");
     }
-    if (o.keywords && o.keywords.length) p.with_keywords = o.keywords.join("|");
+    if (useKw && o.keywords && o.keywords.length) p.with_keywords = o.keywords.join("|");
     const f = o.filters || {};
     if (f.minVote) p["vote_average.gte"] = f.minVote;
     if (f.minYear) p[type === "movie" ? "primary_release_date.gte" : "first_air_date.gte"] = `${f.minYear}-01-01`;
     if (f.maxRuntime && type === "movie") p["with_runtime.lte"] = f.maxRuntime;
-    if (o.genres && o.genres.length && !g) return { results: [], total: 0, pages: 0 }; // gênero não existe nesse tipo
+    if (o.genres && o.genres.length && !g && !(o.allGenres && o.keywords && o.keywords.length)) return { results: [], total: 0, pages: 0 }; // gênero não existe nesse tipo
     const d = await get(`/discover/${type}`, p);
     return { results: list(d, type), total: d.total_results || 0, pages: d.total_pages || 0 };
   }

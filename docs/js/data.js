@@ -86,6 +86,17 @@ UD.DICT = {
   "brasil": "brazil", "favela": "favela", "idosos": "old age", "avó": "grandmother"
 };
 
+/* Temas que na verdade são gêneros (ou combinação de gêneros): a busca usa o gênero do TMDB,
+   que tem milhares de títulos, em vez da palavra-chave, que quase ninguém marcou. */
+UD.GENRE_THEMES = {
+  "comédia romântica": ["comedia", "romance"], "drama romântico": ["drama", "romance"],
+  "comédia dramática": ["comedia", "drama"], "ação e comédia": ["acao", "comedia"],
+  "comédia": ["comedia"], "romance": ["romance"], "terror": ["terror"], "suspense": ["suspense"],
+  "ação": ["acao"], "aventura": ["aventura"], "drama": ["drama"], "ficção científica": ["ficcao"],
+  "fantasia": ["fantasia"], "animação": ["animacao"], "documentário": ["documentario"],
+  "crime": ["crime"], "mistério": ["misterio"], "faroeste": ["faroeste"], "infantil": ["infantil"]
+};
+
 UD.POPULAR_THEMES = ["natal", "viagem no tempo", "baseado em fatos reais", "assalto",
   "zumbi", "super-herói", "comédia romântica", "sobrevivência", "final surpreendente", "cachorro"];
 

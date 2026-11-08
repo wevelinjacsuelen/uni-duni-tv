@@ -68,7 +68,7 @@
     const jobs = [];
 
     if (mode) {
-      const o = { genres: mode.genres, keywords: mode.kw ? [mode.kw.id] : [], filters: Object.assign({}, f, { maxRuntime: mode.maxRuntime || f.maxRuntime }), minVotes: mode.kw ? 10 : 80 };
+      const o = { genres: mode.genres, allGenres: !!mode.all, keywords: mode.kw ? [mode.kw.id] : [], filters: Object.assign({}, f, { maxRuntime: mode.maxRuntime || f.maxRuntime }), minVotes: mode.kw ? 10 : 80 };
       mode.page = (mode.page || 0);
       for (let i = 0; i < 2; i++) {
         mode.page++;

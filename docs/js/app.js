@@ -912,7 +912,7 @@
 
   function dictMatches(q) {
     const n = normTxt(q); if (!n) return [];
-    const keys = Object.keys(UD.DICT).concat(Object.keys(S.learned).filter(k => !UD.DICT[k]));
+    const keys = Object.keys(UD.DICT).concat(Object.keys(UD.GENRE_THEMES).filter(k => !UD.DICT[k]), Object.keys(S.learned).filter(k => !UD.DICT[k] && !UD.GENRE_THEMES[k]));
     const starts = [], has = [];
     keys.forEach(k => { const nk = normTxt(k); if (nk.startsWith(n)) starts.push(k); else if (nk.includes(n)) has.push(k); });
     return starts.sort((a, b) => a.length - b.length).concat(has).slice(0, 6);
@@ -1111,9 +1111,10 @@
     const pt = b.dataset.pt;
     b.disabled = true;
     try {
-      const kw = await resolveTheme(pt);
-      if (!kw) { toast("Não achei esse tema no TMDB."); return; }
-      U.search.kw = Object.assign({ label: pt }, kw);
+      let kw = null;
+      try { kw = await resolveTheme(pt); } catch (err) { if (!UD.GENRE_THEMES[pt]) throw err; }
+      if (!kw && !UD.GENRE_THEMES[pt]) { toast("Não achei esse tema no TMDB."); return; }
+      U.search.kw = Object.assign({ label: pt }, kw || {}, UD.GENRE_THEMES[pt] ? { genres: UD.GENRE_THEMES[pt] } : {});
       U.search.q = pt; const qi = $("#q"); if (qi) { qi.value = pt; $("#qx").classList.remove("hidden"); }
       drawSearch();
     } catch (err) { toast(err.message); } finally { b.disabled = false; }
@@ -1128,13 +1129,15 @@
       <div class="list" id="kwList"><div style="display:grid;place-items:center;padding:30px"><div class="spinner"></div></div></div>`;
     $("#kwOff").onclick = () => { U.search.kw = null; drawSearch(); };
     $("#kwDeck").onclick = () => {
-      U.mode = { label: `Tema: ${kw.label}`, genres: [], kw, maxRuntime: 0, page: 0 };
+      U.mode = kw.genres
+        ? { label: `Tema: ${kw.label}`, genres: kw.genres, all: true, kw: kw.id ? { id: kw.id, name: kw.name } : null, maxRuntime: 0, page: 0 }
+        : { label: `Tema: ${kw.label}`, genres: [], kw, maxRuntime: 0, page: 0 };
       U.deck = []; U.deckError = null; go("home");
     };
     try {
       const [m, t] = await Promise.all([
-        tmdb.discover("movie", { keywords: [kw.id], minVotes: 5 }),
-        tmdb.discover("tv", { keywords: [kw.id], minVotes: 0 })
+        tmdb.discover("movie", kw.genres ? { genres: kw.genres, allGenres: true, minVotes: 100 } : { keywords: [kw.id], minVotes: 5 }),
+        tmdb.discover("tv", kw.genres ? { genres: kw.genres, allGenres: true, keywords: kw.id ? [kw.id] : [], minVotes: 20 } : { keywords: [kw.id], minVotes: 0 })
       ]);
       if (seq !== U.search.seq) return;
       const items = m.results.concat(t.results).filter(i => i.poster).sort((a, b) => b.pop - a.pop);
@@ -1392,7 +1395,7 @@
   /* =========================================================
      INÍCIO DO APP
      ========================================================= */
-  UD.VERSION = "1.5.2";
+  UD.VERSION = "1.5.3";
   function start() {
     if (!S.apiKey) renderWelcome();
     else if (!S.onboarded) renderOnboarding();
