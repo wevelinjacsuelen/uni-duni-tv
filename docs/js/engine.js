@@ -56,7 +56,7 @@
   }
 
   /* busca uma nova leva de cartões */
-  async function batch(type, mode, exclude) {
+  async function batch(type, mode, exclude, opts = {}) {
     const p = profile();
     const f = UD.S.filters;
     const pool = new Map();
@@ -99,16 +99,24 @@
       // 4) fora da bolha: gêneros que você ainda não explorou
       const others = UD.GENRES.filter(g => g[type].length && !top.includes(g.k) && !avoid.includes(g.k)).map(g => g.k);
       const pick = shuffle(others).slice(0, 2);
-      jobs.push(UD.tmdb.discover(type, { genres: pick, without: avoid, page: rnd(10), minVotes: 800, sort: "vote_average.desc", filters: f })
-        .then(r => r.results.forEach(c => add([c], { explore: true, why: "Fora da sua bolha" }))));
+      if (!opts.noExplore) {
+        jobs.push(UD.tmdb.discover(type, { genres: pick, without: avoid, page: rnd(10), minVotes: 800, sort: "vote_average.desc", filters: f })
+          .then(r => r.results.forEach(c => add([c], { explore: true, why: "Fora da sua bolha" }))));
+      }
     }
 
     await Promise.allSettled(jobs);
 
-    let cands = [...pool.values()].filter(c => passFilters(c, f, mode));
+    // rede de segurança: se quase nada veio (ex.: você só avaliou filmes e pediu série), completa com o que está em alta
+    if (!mode && pool.size < 6) {
+      try { const d = await UD.tmdb.get(`/trending/${type}/week`, { page: rnd(3) }); add(UD.tmdb.list(d, type), { why: "Em alta esta semana" }); } catch (e) { /* sem internet */ }
+    }
+
+    const pf = mode || (opts.maxRuntime ? { maxRuntime: opts.maxRuntime } : null);
+    let cands = [...pool.values()].filter(c => passFilters(c, f, pf));
     cands.forEach(c => (c.s = score(c, p)));
     const main = cands.filter(c => !c.explore).sort((a, b) => b.s - a.s).slice(0, 12);
-    const expl = shuffle(cands.filter(c => c.explore)).slice(0, 3);
+    const expl = opts.noExplore ? [] : shuffle(cands.filter(c => c.explore)).slice(0, 3);
 
     // detalhes: duração, temas e sinopse (se faltar em português busca em inglês)
     const detailed = await Promise.all(main.concat(expl).map(async c => {
@@ -118,7 +126,7 @@
       } catch (e) { return c; }
     }));
     UD.store.save();
-    const ok = detailed.filter(c => passFilters(c, f, mode));
+    const ok = detailed.filter(c => passFilters(c, f, pf));
     const m2 = ok.filter(c => !c.explore);
     m2.forEach(c => (c.s = score(c, p)));
     m2.sort((a, b) => b.s - a.s);
@@ -142,5 +150,15 @@
     return { pos: pos.map(([k, v]) => ({ k, pct: Math.round(v * 100) })), neg };
   }
 
-  UD.engine = { profile, batch, genreBars, seen };
+  /* sugestão do dia: rule = "calm" (seg a qui), "bold" (sex a dom) ou "plain" (sem regra) */
+  async function pickDaily(type, rule, exclude) {
+    const opts = {};
+    if (rule === "calm") { opts.noExplore = true; if (type === "movie") opts.maxRuntime = 110; }
+    const got = await batch(type, null, exclude, opts);
+    if (!got.length) return null;
+    if (rule === "bold") { const e = got.find(c => c.explore); if (e) return e; }
+    return got[0];
+  }
+
+  UD.engine = { profile, batch, genreBars, seen, pickDaily };
 })();

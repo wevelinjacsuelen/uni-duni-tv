@@ -21,6 +21,7 @@
     user: I('<circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-7 8-7s8 3 8 7"/>'),
     check: I('<path d="M5 12l5 5L20 7"/>'),
     pause: I('<path d="M9 5v14M15 5v14"/>'),
+    sun: I('<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M5 5l1.5 1.5M17.5 17.5L19 19M5 19l1.5-1.5M17.5 6.5L19 5"/>'),
     thumbUp: I('<path d="M7 11v9H4v-9zM7 11l4-8c1.7 0 3 1.3 3 3v3h5.2a2 2 0 0 1 2 2.3l-1.2 7A2 2 0 0 1 18 20H7"/>'),
     thumbDown: I('<path d="M7 13V4H4v9zM7 13l4 8c1.7 0 3-1.3 3-3v-3h5.2a2 2 0 0 0 2-2.3l-1.2-7A2 2 0 0 0 18 4H7"/>'),
     clap: I('<rect x="3" y="9" width="18" height="12" rx="2"/><path d="M3 9l1.5-5 16 3.5L21 9M8 4.5l2 4.2M13 5.6l2 3.4"/><path d="M10 13l5 2.5-5 2.5z" fill="currentColor"/>'),
@@ -43,7 +44,7 @@
     deck: [], deckLoading: false, deckError: null, mode: null,
     ob: { type: "movie", genre: null, page: 1, items: [], open: null, loading: false },
     search: { q: "", kw: null, seq: 0 },
-    listTab: "want",
+    listTab: "want", today: { busy: {}, err: {}, histItems: [] },
     undo: null, backupNagged: false
   };
 
@@ -167,7 +168,7 @@
     nav.classList.remove("hidden");
     screen.className = "screen glow-bg";
     screen.scrollTop = 0;
-    ({ home: renderHome, search: renderSearch, lists: renderLists, profile: renderProfile })[tab]();
+    ({ home: renderHome, today: renderToday, search: renderSearch, lists: renderLists, profile: renderProfile })[tab]();
   }
   nav.addEventListener("click", e => {
     const b = e.target.closest("button[data-tab]");
@@ -608,6 +609,133 @@
   /* =========================================================
      BUSCA
      ========================================================= */
+  /* =========================================================
+     HOJE (sugestão do dia: um filme e uma série por dia)
+     ========================================================= */
+  const cap = t => t.charAt(0).toUpperCase() + t.slice(1);
+  const pad2 = n => String(n).padStart(2, "0");
+  const dayKey = () => { const x = new Date(); return `${x.getFullYear()}-${pad2(x.getMonth() + 1)}-${pad2(x.getDate())}`; };
+  function dayRule() {
+    if (!S.dailyVary) return "plain";
+    const wd = new Date().getDay(); // 0 = domingo
+    return wd === 0 || wd === 5 || wd === 6 ? "bold" : "calm";
+  }
+  function dayNote(rule, type, explore) {
+    if (rule === "calm") return type === "movie" ? "Dia de semana: filme curto, no seu estilo" : "Dia de semana: no seu estilo";
+    if (rule === "bold") return explore ? "Fim de semana: algo fora do seu padrão" : "Fim de semana: sem pressa, no seu estilo";
+    return "";
+  }
+  const slim = c => ({ k: c.k, id: c.id, type: c.type, title: c.title, poster: c.poster, backdrop: c.backdrop, year: c.year, vote: c.vote,
+    runtime: c.runtime || 0, seasons: c.seasons || 0, overview: c.overview || "", genres: c.genres || [], why: c.why || "", note: c.note || "", explore: !!c.explore });
+  const dailyKeysUsed = () => { const set = new Set(); Object.values(S.daily).forEach(d => ["movie", "tv"].forEach(t => d[t] && set.add(d[t].k))); return set; };
+
+  async function ensureToday(type, force) {
+    const key = dayKey();
+    S.daily[key] = S.daily[key] || {};
+    if (S.daily[key][type] && !force) return;
+    if (U.today.busy[type]) return;
+    U.today.busy[type] = true; U.today.err[type] = null;
+    if (U.tab === "today") drawToday();
+    try {
+      const rule = dayRule();
+      const it = await engine.pickDaily(type, rule, dailyKeysUsed());
+      if (!it) throw new Error("Não achei uma sugestão agora. Tente de novo.");
+      it.note = dayNote(rule, type, !!it.explore);
+      S.daily[key][type] = slim(it);
+      Object.keys(S.daily).sort().reverse().slice(8).forEach(k => delete S.daily[k]);
+      store.save();
+    } catch (e) {
+      U.today.err[type] = e.message || "Erro ao buscar a sugestão.";
+      if (e.status === 401) { S.apiKey = ""; store.save(true); renderWelcome(); return; }
+    } finally {
+      U.today.busy[type] = false;
+      if (U.tab === "today") drawToday();
+    }
+  }
+
+  function renderToday() {
+    screen.innerHTML = `
+      <div class="topbar">${WM}</div>
+      <h1>Sugestão de hoje</h1>
+      <div class="muted" style="margin:2px 0 16px">${cap(new Date().toLocaleDateString("pt-BR", { weekday: "long", day: "numeric", month: "long" }))}</div>
+      <div id="tdBody"></div>`;
+    const body = $("#tdBody");
+    body.onclick = e => {
+      const b = e.target.closest("[data-td]");
+      if (b) { const [a, t] = b.dataset.td.split(":"); return tdAct(a, t); }
+      const r = e.target.closest(".row-item");
+      if (r) { const it = U.today.histItems.find(i => i.k === r.dataset.k); if (it) openDetail(it, { refresh: drawToday }); }
+    };
+    drawToday();
+    ensureToday("movie"); ensureToday("tv");
+  }
+
+  function todayCard(type, it) {
+    const label = type === "movie" ? "Filme do dia" : "Série do dia";
+    if (U.today.busy[type]) return `<div class="td-card"><div class="td-label">${label}</div><div class="empty small"><div class="spinner"></div><p class="muted">Escolhendo para você…</p></div></div>`;
+    if (!it) return `<div class="td-card"><div class="td-label">${label}</div><div class="empty small">${IC.refresh}<p>${esc(U.today.err[type] || "Sem sugestão ainda.")}</p><button class="btn" data-td="swap:${type}">Tentar de novo</button></div></div>`;
+    const rec = S.items[it.k];
+    const done = rec && ["liked", "disliked", "dropped"].includes(rec.status);
+    const btns = [];
+    if (!done) {
+      if (!rec || rec.status !== "want") btns.push(`<button class="btn primary" data-td="want:${type}">${IC.heart} Quero ver</button>`);
+      btns.push(`<button class="btn" data-td="seen:${type}">${IC.check} Já assisti</button>`);
+      if (!rec || rec.status !== "dislike") btns.push(`<button class="btn" data-td="nope:${type}">${IC.x} Não gosto</button>`);
+    }
+    return `<div class="td-card">
+      <div class="td-label">${label}</div>
+      <button class="td-img" data-td="open:${type}"><img src="${tmdb.img(it.backdrop || it.poster, "w780")}" alt=""><span class="td-title">${esc(it.title)}</span></button>
+      <div class="meta">${metaLine(it)}${it.vote ? `<span class="dot"></span>${ratingPill(it.vote)}` : ""}</div>
+      ${it.overview ? `<p class="td-ov">${esc(it.overview)}</p>` : ""}
+      ${it.note ? `<div class="td-note">${esc(it.note)}</div>` : ""}
+      ${it.why ? `<div class="td-why">${esc(it.why)}</div>` : ""}
+      ${rec ? `<div class="td-status">Na sua lista: ${esc(statusText(rec))}</div>` : ""}
+      ${U.today.err[type] ? `<div class="err">${esc(U.today.err[type])}</div>` : ""}
+      ${btns.length ? `<div class="td-actions ${btns.length === 2 ? "two" : ""}">${btns.join("")}</div>` : ""}
+      <button class="td-swap" data-td="swap:${type}">${IC.refresh} Outra sugestão</button>
+    </div>`;
+  }
+
+  function historyHTML() {
+    const today = dayKey();
+    const now = new Date(); const t0 = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const all = [];
+    const blocks = Object.keys(S.daily).filter(k => k !== today).sort().reverse().slice(0, 7).map(k => {
+      const [y, m, d] = k.split("-").map(Number);
+      const dt = new Date(y, m - 1, d);
+      const diff = Math.round((t0 - dt) / 864e5);
+      const lab = (diff === 1 ? "Ontem" : cap(dt.toLocaleDateString("pt-BR", { weekday: "long" }))) + ` · ${pad2(d)}/${pad2(m)}`;
+      const its = ["movie", "tv"].map(t => S.daily[k][t]).filter(Boolean);
+      its.forEach(i => all.push(i));
+      return its.length ? `<div class="section-h" style="margin:16px 0 0"><h3>${lab}</h3></div><div class="list">${its.map(rowHTML).join("")}</div>` : "";
+    }).join("");
+    U.today.histItems = all;
+    return blocks ? `<div class="section-h"><h2>Dias anteriores</h2></div><p class="muted small" style="margin:0">Sugestões que você pode ter perdido.</p>${blocks}` : "";
+  }
+
+  function drawToday() {
+    const body = $("#tdBody"); if (!body) return;
+    const day = S.daily[dayKey()] || {};
+    body.innerHTML = todayCard("movie", day.movie) + todayCard("tv", day.tv) + historyHTML() +
+      `<p class="note" style="margin-top:20px">A sugestão muda todo dia. A que você não viu fica em "Dias anteriores", sem contar como "não gosto".</p>`;
+  }
+
+  async function tdAct(a, type) {
+    const it = (S.daily[dayKey()] || {})[type];
+    if (a === "swap") return ensureToday(type, true);
+    if (!it) return;
+    if (a === "open") return openDetail(it, { refresh: drawToday });
+    let status, reason = "";
+    if (a === "seen") {
+      const r = await askWatched(it.title);
+      if (!r) return;
+      status = r.status; reason = r.reason;
+    } else status = a === "want" ? "want" : "dislike";
+    const prev = store.setStatus(it, status, reason);
+    toast(`Marcado: ${STATUS_TXT[status]}`, "Desfazer", () => { store.restore(it.k, prev); drawToday(); });
+    drawToday();
+  }
+
   function dictMatches(q) {
     const n = normTxt(q); if (!n) return [];
     const keys = Object.keys(UD.DICT).concat(Object.keys(S.learned).filter(k => !UD.DICT[k]));
@@ -904,9 +1032,17 @@
       <div class="topbar">${WM}</div>
       <h1>Minhas listas</h1>
       <div class="tabs" id="lt">${Object.entries(groups).map(([k, v]) => `<button class="chip ${k === U.listTab ? "solid" : ""}" data-l="${k}">${v.ic.replace("<svg", '<svg width="16" height="16"')} ${v.n} (${v.c})</button>`).join("")}</div>
-      <div class="list" id="ll">${items.length ? items.map(rowHTML).join("") : `<p class="muted" style="margin-top:24px">Nada aqui ainda. ${U.listTab === "want" ? "Arraste cartões para a direita no Início." : "Marque o que já assistiu no Início ou na Busca."}</p>`}</div>`;
+      <div class="list" id="ll">${items.length ? items.map(it => U.listTab === "want" ? `<div class="row-wrap">${rowHTML(it)}<button class="quick" data-seen="${it.k}" aria-label="Já assisti">${IC.check}<span>Assisti</span></button></div>` : rowHTML(it)).join("") : `<p class="muted" style="margin-top:24px">Nada aqui ainda. ${U.listTab === "want" ? "Arraste cartões para a direita no Início." : "Marque o que já assistiu no Início ou na Busca."}</p>`}</div>`;
     $("#lt").onclick = e => { const b = e.target.closest("[data-l]"); if (b) { U.listTab = b.dataset.l; renderLists(); } };
     bindRows($("#ll"), items, renderLists);
+    $("#ll").addEventListener("click", async e => {
+      const q = e.target.closest("[data-seen]"); if (!q) return;
+      const it = items.find(i => i.k === q.dataset.seen); if (!it) return;
+      const r = await askWatched(it.title); if (!r) return;
+      const prev = store.setStatus(it, r.status, r.reason);
+      toast(`Marcado: ${STATUS_TXT[r.status]}`, "Desfazer", () => { store.restore(it.k, prev); renderLists(); });
+      renderLists();
+    });
   }
 
   /* =========================================================
@@ -941,6 +1077,7 @@
 
       <div class="section-h"><h2>Configurações</h2></div>
       <div class="list">
+        <button class="row-item" id="cVar" style="padding:14px 0"><span style="color:var(--amber)">${IC.sun}</span><div class="body"><h3>Variar a sugestão do dia</h3><div class="meta">${S.dailyVary ? "Ligado: seg a qui curto e no seu estilo, sex a dom mais ousado" : "Desligado: sempre a melhor para o seu gosto"}</div></div><span class="chev">${IC.chev}</span></button>
         <button class="row-item" id="cKey" style="padding:14px 0"><span style="color:var(--amber)">${IC.key}</span><div class="body"><h3>Trocar chave do TMDB</h3></div><span class="chev">${IC.chev}</span></button>
         <button class="row-item" id="cOb" style="padding:14px 0"><span style="color:var(--amber)">${IC.refresh}</span><div class="body"><h3>Avaliar mais títulos populares</h3><div class="meta">Volta para a tela da primeira vez</div></div><span class="chev">${IC.chev}</span></button>
         <button class="row-item" id="cDel" style="padding:14px 0"><span style="color:var(--red)">${IC.trash}</span><div class="body"><h3 style="color:var(--red)">Apagar todas as avaliações</h3></div><span class="chev">${IC.chev}</span></button>
@@ -953,6 +1090,7 @@
     $("#exp").onclick = exportBackup;
     $("#imp").onclick = () => $("#impF").click();
     $("#impF").onchange = importBackup;
+    $("#cVar").onclick = () => { S.dailyVary = !S.dailyVary; store.save(true); toast(S.dailyVary ? "Sugestão varia por dia da semana" : "Sugestão sem variação por dia"); renderProfile(); };
     $("#cKey").onclick = renderWelcome;
     $("#cOb").onclick = () => { U.ob.items = []; renderOnboarding(); };
     $("#cDel").onclick = async () => {
@@ -1006,7 +1144,7 @@
   /* =========================================================
      INÍCIO DO APP
      ========================================================= */
-  UD.VERSION = "1.1.1";
+  UD.VERSION = "1.2.0";
   function start() {
     if (!S.apiKey) renderWelcome();
     else if (!S.onboarded) renderOnboarding();

@@ -13,6 +13,8 @@
     learned: {},        // "natal" -> {id, name}
     kw: {},             // "movie:123" -> [ids de palavras-chave]
     filters: { maxRuntime: 0, minYear: 0, minVote: 0 },
+    daily: {},          // "2026-11-08" -> { movie: {...}, tv: {...} } (sugestão do dia)
+    dailyVary: true,    // varia a sugestão conforme o dia da semana
     lastBackup: null,
     sinceBackup: 0
   });
