@@ -393,9 +393,11 @@
   }
 
   function cardHTML(c, i) {
+    const gnames = (c.genres || []).map(k => UD.GENRE_BY_KEY[k] && UD.GENRE_BY_KEY[k].n).filter(Boolean);
     const tag = c.explore
-      ? `<span class="type-tag explore">✦ Fora da bolha</span>`
+      ? `<span class="type-tag explore">✦ Fora da bolha${gnames[0] ? " · " + esc(gnames[0]) : ""}</span>`
       : `<span class="type-tag">${TYPE_N[c.type]}</span>`;
+    const why = c.explore ? `Fora da sua bolha${gnames.length ? ": " + gnames.slice(0, 2).join(" e ") : ""}` : c.why;
     return `<div class="card ${i ? "behind" : ""}" data-k="${c.k}" style="transform:translateY(${i * 14}px) scale(${1 - i * 0.05});z-index:${10 - i}">
       <img class="poster" src="${tmdb.img(c.poster, "w780")}" alt="" draggable="false">
       <div class="shade"></div>
@@ -407,7 +409,7 @@
         <h2>${esc(c.title)}</h2>
         <div class="meta">${metaLine(c)}${c.vote ? `<span class="dot"></span>${ratingPill(c.vote)}` : ""}</div>
         ${c.overview ? `<p class="ov">${esc(c.overview)}</p>` : ""}
-        ${c.why ? `<div class="why">${esc(c.why)}</div>` : ""}
+        ${why ? `<div class="why">${esc(why)}</div>` : ""}
       </div>
     </div>`;
   }
@@ -1004,7 +1006,7 @@
   /* =========================================================
      INÍCIO DO APP
      ========================================================= */
-  UD.VERSION = "1.1.0";
+  UD.VERSION = "1.1.1";
   function start() {
     if (!S.apiKey) renderWelcome();
     else if (!S.onboarded) renderOnboarding();
