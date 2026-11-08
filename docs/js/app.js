@@ -111,7 +111,7 @@
     if (o) { o.ov.remove(); o.onClose && o.onClose(); }
   });
 
-  function askLiked(title) {
+  function askLiked(title, isTv) {
     return new Promise(resolve => {
       let answered = false;
       const ov = openOverlay(`
@@ -123,6 +123,7 @@
             <button class="btn primary" data-a="liked">${IC.thumbUp} Gostei</button>
             <button class="btn" data-a="disliked">${IC.thumbDown} Não gostei</button>
             <button class="btn wide3" data-a="dropped">${IC.pause} Desisti no meio</button>
+            ${isTv ? `<button class="btn wide3" data-a="partial">${IC.play} Vi só algumas temporadas</button>` : ""}
           </div>
           <button class="cancel" data-a="">Cancelar</button>
         </div>`, { center: true, onClose: () => { if (!answered) resolve(null); } });
@@ -147,13 +148,17 @@
   }
 
   /* pergunta tudo de uma vez: gostou / não gostou / desistiu (+ motivo). Devolve {status, reason} ou null */
-  async function askWatched(title) {
-    const status = await askLiked(title);
+  async function askWatched(title, it) {
+    const status = await askLiked(title, !!(it && it.type === "tv"));
     if (!status) return null;
+    if (status === "partial") return { status: "watching", reason: "", partial: true };
     if (status !== "dropped") return { status, reason: "" };
     await new Promise(r => setTimeout(r, 80)); // deixa a janela anterior fechar
     return { status, reason: await askReason(title) };
   }
+
+  // depois de "vi só algumas temporadas": abre a série para marcar até onde foi
+  const openLater = (it, refresh) => setTimeout(() => openDetail(it, { refresh }), 250);
 
   function confirmBox(title, text, okLabel, danger) {
     return new Promise(resolve => {
@@ -504,9 +509,10 @@
     try {
       if (kind === "seen") {
         await flyOut(card, "seen");
-        const r = await askWatched(it.title);
+        const r = await askWatched(it.title, it);
         if (!r) { drawDeck(); return; }
         commit(it, r.status, r.reason);
+        if (r.partial) openLater(it);
       } else {
         await flyOut(card, kind);
         commit(it, kind === "want" ? "want" : kind === "nope" ? "dislike" : "skip");
@@ -527,7 +533,7 @@
     U.deck = U.deck.filter(c => c.k !== it.k);
     drawDeck();
     fillDeck();
-    const msg = { want: "Adicionado a Quero ver", dislike: "Anotado: não gosto", liked: "Assistido e gostou", disliked: "Assistido e não gostou", dropped: "Anotado: desistiu", skip: "Pulado: não volta a aparecer" }[status];
+    const msg = { want: "Adicionado a Quero ver", dislike: "Anotado: não gosto", liked: "Assistido e gostou", disliked: "Assistido e não gostou", dropped: "Anotado: desistiu", watching: "Anotado: assistindo", skip: "Pulado: não volta a aparecer" }[status];
     toast(msg, "Desfazer", () => {
       undo();
       U.deck = [it].concat(U.deck.filter(c => c.k !== it.k));
@@ -605,18 +611,19 @@
     });
     $$("[data-s]", sheet).forEach(b => b.onclick = async () => {
       const s = b.dataset.s;
-      let status = s, reason = "";
+      let status = s, reason = "", partial = false;
       if (s === "seen") {
         closeOverlay();
         await new Promise(r => setTimeout(r, 60));
-        const r = await askWatched(d.title);
+        const r = await askWatched(d.title, d);
         if (!r) return;
-        status = r.status; reason = r.reason;
+        status = r.status; reason = r.reason; partial = !!r.partial;
       } else closeOverlay();
       const prev = store.setStatus(d, s === "clear" ? null : status, reason);
       toast(s === "clear" ? "Removido das listas" : `Marcado: ${STATUS_TXT[status]}`, "Desfazer", () => { store.restore(d.k, prev); ctx.refresh && ctx.refresh(); });
       ctx.refresh && ctx.refresh();
       ctx.onRated && ctx.onRated(d, s === "clear" ? null : status);
+      if (partial) openLater(d, ctx.refresh);
     });
   }
 
@@ -899,15 +906,16 @@
     }
     if (!it) return;
     if (a === "open") return openDetail(it, { refresh: drawToday });
-    let status, reason = "";
+    let status, reason = "", partial = false;
     if (a === "seen") {
-      const r = await askWatched(it.title);
+      const r = await askWatched(it.title, it);
       if (!r) return;
-      status = r.status; reason = r.reason;
+      status = r.status; reason = r.reason; partial = !!r.partial;
     } else status = a === "want" ? "want" : "dislike";
     const prev = store.setStatus(it, status, reason);
     toast(`Marcado: ${STATUS_TXT[status]}`, "Desfazer", () => { store.restore(it.k, prev); drawToday(); });
     drawToday();
+    if (partial) openLater(it, drawToday);
   }
 
   function dictMatches(q) {
@@ -1164,10 +1172,11 @@
     $("#kwList").addEventListener("click", async e => {
       const q = e.target.closest("[data-seen]"); if (!q) return;
       const it = items.find(i => i.k === q.dataset.seen); if (!it) return;
-      const r = await askWatched(it.title); if (!r) return;
+      const r = await askWatched(it.title, it); if (!r) return;
       const prev = store.setStatus(it, r.status, r.reason);
       toast(`Marcado: ${STATUS_TXT[r.status]}`, "Desfazer", () => { store.restore(it.k, prev); drawPerson(kw); });
       drawPerson(kw);
+      if (r.partial) openLater(it, () => drawPerson(kw));
     });
   }
   async function loadPerson(kw, seq) {
@@ -1352,11 +1361,12 @@
       const nx = e.target.closest("[data-nx]"); if (nx) return markNext(nx.dataset.nx, renderLists);
       const q = e.target.closest("[data-seen]"); if (!q) return;
       const it = items.find(i => i.k === q.dataset.seen); if (!it) return;
-      const r = await askWatched(it.title); if (!r) return;
+      const r = await askWatched(it.title, it); if (!r) return;
       const prev = store.setStatus(it, r.status, r.reason);
-      store.markToday();
+      if (!r.partial) store.markToday();
       toast(`Marcado: ${STATUS_TXT[r.status]}`, "Desfazer", () => { store.restore(it.k, prev); renderLists(); });
       renderLists();
+      if (r.partial) openLater(it, renderLists);
     });
   }
 
@@ -1459,7 +1469,7 @@
   /* =========================================================
      INÍCIO DO APP
      ========================================================= */
-  UD.VERSION = "1.6.0";
+  UD.VERSION = "1.6.1";
   function start() {
     const sv = $("#spVer"); if (sv) sv.textContent = "versão " + UD.VERSION;
     if (!S.apiKey) renderWelcome();
