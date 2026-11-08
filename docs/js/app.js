@@ -43,7 +43,7 @@
     tab: "home",
     deck: [], deckLoading: false, deckError: null, mode: null,
     ob: { type: "movie", genre: null, page: 1, items: [], open: null, loading: false },
-    search: { q: "", kw: null, seq: 0 },
+    search: { q: "", kw: null, seq: 0, similar: null },
     listTab: "want", today: { busy: {}, err: {}, histItems: [] },
     undo: null, backupNagged: false
   };
@@ -603,6 +603,7 @@
       const prev = store.setStatus(d, s === "clear" ? null : status, reason);
       toast(s === "clear" ? "Removido das listas" : `Marcado: ${STATUS_TXT[status]}`, "Desfazer", () => { store.restore(d.k, prev); ctx.refresh && ctx.refresh(); });
       ctx.refresh && ctx.refresh();
+      ctx.onRated && ctx.onRated(d, s === "clear" ? null : status);
     });
   }
 
@@ -766,17 +767,61 @@
         <input id="q" placeholder="Tema, título ou palavra (ex.: natal)" autocomplete="off" value="${esc(U.search.q)}">
         <button class="clear ${U.search.q || U.search.kw ? "" : "hidden"}" id="qx" aria-label="Limpar">${IC.x}</button>
       </div>
+      <div id="simBox"></div>
       <div id="sr"></div>`;
     const q = $("#q");
     let t;
     q.oninput = () => {
-      U.search.q = q.value; U.search.kw = null;
+      U.search.q = q.value; U.search.kw = null; U.search.similar = null; drawSimilar();
       $("#qx").classList.toggle("hidden", !q.value);
       clearTimeout(t); t = setTimeout(drawSearch, 300);
       drawSearch(true);
     };
-    $("#qx").onclick = () => { U.search.q = ""; U.search.kw = null; q.value = ""; $("#qx").classList.add("hidden"); drawSearch(); };
+    $("#qx").onclick = () => { U.search.q = ""; U.search.kw = null; U.search.similar = null; drawSimilar(); q.value = ""; $("#qx").classList.add("hidden"); drawSearch(); };
+    drawSimilar();
     drawSearch();
+  }
+
+  /* ---------- parecidos (só na Busca) ---------- */
+  function rateSimilar(d, status) {
+    if (!["want", "liked", "dropped"].includes(status)) { drawSimilar(); return; }
+    const sim = U.search.similar = { k: d.k, title: d.title, type: d.type, items: null, loading: true, err: "" };
+    drawSimilar();
+    (async () => {
+      try {
+        let res = tmdb.list(await tmdb.get(`/${d.type}/${d.id}/recommendations`), d.type);
+        if (res.length < 8) {
+          const more = tmdb.list(await tmdb.get(`/${d.type}/${d.id}/similar`), d.type);
+          const have = new Set(res.map(r => r.k));
+          res = res.concat(more.filter(m => !have.has(m.k)));
+        }
+        sim.items = res.filter(r => r.poster && r.k !== d.k).slice(0, 14);
+      } catch (e) { sim.err = e.message || "Erro ao buscar parecidos."; }
+      sim.loading = false;
+      if (U.search.similar === sim) drawSimilar();
+    })();
+  }
+
+  function drawSimilar() {
+    const box = $("#simBox"); if (!box) return;
+    const sim = U.search.similar;
+    if (!sim) { box.innerHTML = ""; return; }
+    const items = (sim.items || []).filter(i => !S.items[i.k] && !engine.seen(i.k));
+    let inner;
+    if (sim.loading) inner = `<div style="display:grid;place-items:center;padding:22px"><div class="spinner"></div></div>`;
+    else if (sim.err) inner = `<p class="err">${esc(sim.err)}</p>`;
+    else if (!items.length) inner = `<p class="muted small" style="margin:0 0 8px">Não achei parecidos novos.</p>`;
+    else inner = `<div class="sim-row">${items.map(it => {
+      const sub = [it.year, it.vote ? "★ " + String(it.vote.toFixed(1)).replace(".", ",") : ""].filter(Boolean).join(" · ");
+      return `<button class="sim-card" data-k="${it.k}"><img src="${tmdb.img(it.poster, "w342")}" alt="" loading="lazy"><div class="cap"><b>${esc(it.title)}</b><span>${esc(sub)}</span></div></button>`;
+    }).join("")}</div>`;
+    box.innerHTML = `<div class="sim-box"><div class="sim-h"><h3>Parecidos com ${esc(sim.title)}</h3><button class="link" id="simX">Fechar</button></div>${inner}</div>`;
+    $("#simX", box).onclick = () => { U.search.similar = null; drawSimilar(); };
+    box.onclick = e => {
+      const c = e.target.closest(".sim-card"); if (!c) return;
+      const it = items.find(i => i.k === c.dataset.k);
+      if (it) openDetail(it, { refresh: drawSimilar, onRated: rateSimilar });
+    };
   }
 
   function shortcutsHTML() {
@@ -857,7 +902,7 @@
       $("#titles").innerHTML = items.length
         ? `<div class="section-h"><h2>Títulos</h2></div><div class="list">${items.map(rowHTML).join("")}</div>`
         : `<p class="muted" style="margin-top:20px">Nenhum título com esse nome.</p>`;
-      bindRows($("#titles"), items, () => drawSearch());
+      bindRows($("#titles"), items, () => drawSearch(), rateSimilar);
     } catch (e) {
       if (seq === U.search.seq) $("#titles").innerHTML = `<p class="err">${esc(e.message)}</p>`;
     }
@@ -905,7 +950,7 @@
       const total = m.total + t.total;
       $("#kwN").textContent = `${total} título${total === 1 ? "" : "s"} encontrado${total === 1 ? "" : "s"} (${m.total} filme${m.total === 1 ? "" : "s"}, ${t.total} série${t.total === 1 ? "" : "s"})`;
       $("#kwList").innerHTML = items.length ? items.map(rowHTML).join("") : `<p class="muted">Nenhum título marcado com esse tema.</p>`;
-      bindRows($("#kwList"), items, () => drawKwResults(kw, U.search.seq));
+      bindRows($("#kwList"), items, () => drawKwResults(kw, U.search.seq), rateSimilar);
     } catch (e) {
       $("#kwList").innerHTML = `<p class="err">${esc(e.message)}</p>`;
     }
@@ -923,11 +968,11 @@
       <span class="chev">${IC.chev}</span>
     </button>`;
   }
-  function bindRows(root, items, refresh) {
+  function bindRows(root, items, refresh, onRated) {
     root.onclick = e => {
       const r = e.target.closest(".row-item"); if (!r) return;
       const it = items.find(i => i.k === r.dataset.k);
-      openDetail(it, { refresh });
+      openDetail(it, { refresh, onRated });
     };
   }
 
@@ -1148,7 +1193,7 @@
   /* =========================================================
      INÍCIO DO APP
      ========================================================= */
-  UD.VERSION = "1.2.1";
+  UD.VERSION = "1.3.0";
   function start() {
     if (!S.apiKey) renderWelcome();
     else if (!S.onboarded) renderOnboarding();
