@@ -46,7 +46,7 @@
     deck: [], deckLoading: false, deckError: null, mode: null,
     ob: { type: "movie", genre: null, page: 1, items: [], open: null, loading: false },
     search: { q: "", kw: null, seq: 0, similar: null },
-    listTab: "want", today: { busy: {}, err: {}, histItems: [] },
+    listTab: "want", listType: "all", today: { busy: {}, err: {}, histItems: [] },
     undo: null, backupNagged: false
   };
 
@@ -1259,21 +1259,24 @@
      LISTAS
      ========================================================= */
   function renderLists() {
-    const c = store.counts();
+    const base = Object.values(S.items).filter(i => U.listType === "all" || i.type === U.listType);
     const groups = {
-      want: { n: "Quero ver", f: i => i.status === "want", c: c.want, ic: IC.heart },
-      watching: { n: "Assistindo", f: i => i.status === "watching", c: c.watching, ic: IC.play },
-      watched: { n: "Assistidos", f: i => i.status === "liked" || i.status === "disliked" || i.status === "dropped", c: c.watched, ic: IC.check },
-      dropped: { n: "Desisti", f: i => i.status === "dropped", c: c.dropped, ic: IC.pause },
-      nope: { n: "Não gostei", f: i => i.status === "dislike" || i.status === "disliked", c: c.rejected, ic: IC.thumbDown }
+      want: { n: "Quero ver", f: i => i.status === "want", ic: IC.heart },
+      watching: { n: "Assistindo", f: i => i.status === "watching", ic: IC.play },
+      watched: { n: "Assistidos", f: i => i.status === "liked" || i.status === "disliked" || i.status === "dropped", ic: IC.check },
+      dropped: { n: "Desisti", f: i => i.status === "dropped", ic: IC.pause },
+      nope: { n: "Não gostei", f: i => i.status === "dislike" || i.status === "disliked", ic: IC.thumbDown }
     };
+    Object.values(groups).forEach(v => (v.c = base.filter(v.f).length));
     const g = groups[U.listTab];
-    const items = Object.values(S.items).filter(g.f).sort((a, b) => (b.last || b.at) - (a.last || a.at));
+    const items = base.filter(g.f).sort((a, b) => (b.last || b.at) - (a.last || a.at));
     screen.innerHTML = `
       <div class="topbar">${WM}</div>
       <h1>Minhas listas</h1>
       <div class="tabs" id="lt">${Object.entries(groups).map(([k, v]) => `<button class="chip ${k === U.listTab ? "solid" : ""}" data-l="${k}">${v.ic.replace("<svg", '<svg width="16" height="16"')} ${v.n} (${v.c})</button>`).join("")}</div>
+      <div class="tabs" id="ltype" style="margin:8px 0 4px">${[["all", "Tudo"], ["movie", "Filmes"], ["tv", "Séries"]].map(([k, n]) => `<button class="chip ${k === U.listType ? "on" : ""}" data-t="${k}">${n}</button>`).join("")}</div>
       <div class="list" id="ll">${items.length ? items.map(it => U.listTab === "watching" ? nextRow(it) : U.listTab === "want" ? `<div class="row-wrap">${rowHTML(it)}<button class="quick" data-seen="${it.k}" aria-label="Já assisti">${IC.check}<span>Assisti</span></button></div>` : rowHTML(it)).join("") : `<p class="muted" style="margin-top:24px">Nada aqui ainda. ${U.listTab === "want" ? "Arraste cartões para a direita no Início." : U.listTab === "watching" ? "Abra uma série e marque os episódios que já viu." : "Marque o que já assistiu no Início ou na Busca."}</p>`}</div>`;
+    $("#ltype").onclick = e => { const b = e.target.closest("[data-t]"); if (b) { U.listType = b.dataset.t; renderLists(); } };
     $("#lt").onclick = e => { const b = e.target.closest("[data-l]"); if (b) { U.listTab = b.dataset.l; renderLists(); } };
     bindRows($("#ll"), items, renderLists);
     $("#ll").addEventListener("click", async e => {
@@ -1387,7 +1390,7 @@
   /* =========================================================
      INÍCIO DO APP
      ========================================================= */
-  UD.VERSION = "1.5.0";
+  UD.VERSION = "1.5.1";
   function start() {
     if (!S.apiKey) renderWelcome();
     else if (!S.onboarded) renderOnboarding();

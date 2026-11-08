@@ -1,0 +1,41 @@
+# Uni Duni TV
+
+App pessoal e gratuito para quem não sabe o que assistir. Recomenda filmes e séries pelo seu gosto, sem IA paga e sem assinatura. Funciona no celular como aplicativo (PWA) e usa os dados do TMDB.
+
+Acesso: https://wevelinjacsuelen.github.io/uni-duni-tv
+
+## O que o app faz
+
+**Início (arrastar cartões).** Cada cartão é um filme ou série. Arraste para a direita se quer ver, para a esquerda se não gosta, para cima se já assistiu. Ao marcar "já assisti", o app pergunta se gostou, não gostou ou desistiu no meio (com o motivo). O botão Pular some com o título para sempre, sem mexer no seu gosto. De cada cinco cartões, um é "fora da sua bolha", de um gênero que você ainda não explorou.
+
+**Aprende o seu gosto.** Cada avaliação soma ou tira pontos dos gêneros e temas do título. Os cartões seguintes combinam com o que você curte e evitam o que você rejeita. Não usa IA paga: é uma conta feita no próprio celular.
+
+**Hoje.** Um filme e uma série sugeridos por dia. De segunda a quinta, sugestões mais curtas e no seu estilo. De sexta a domingo, algo mais ousado. As sugestões que você perdeu ficam em "Dias anteriores". A variação por dia da semana pode ser desligada no Perfil.
+
+**Episódios por temporada.** Em cada série, marque a temporada inteira com um toque ou expanda e marque episódio por episódio. Episódios que ainda não saíram ficam travados. A série vira "Assistindo" sozinha e, ao terminar uma série encerrada, o app pergunta se gostou.
+
+**Assistindo e Continue de onde parou.** Lista das séries em andamento, com o progresso e o próximo episódio. O botão "Vi T2E4" marca o próximo com um toque.
+
+**Calendário.** Próximos episódios das séries que você acompanha e estreias dos filmes em "Quero ver".
+
+**Sequência de dias.** Conta os dias seguidos em que você marcou "assisti agora". Registrar histórico antigo não conta.
+
+**Buscar.** Procure por título ou por tema escrito do seu jeito (por exemplo "natal", "viagem no tempo"). Ao marcar um título da busca como "quero ver" ou "já assisti", aparece uma faixa "Parecidos com...". Também mostra os filmes e séries em alta da semana e permite criar atalhos pessoais, como "Domingo chuvoso", com gêneros, tema e duração.
+
+**Listas.** Quero ver, Assistindo, Assistidos, Desisti e Não gostei, com filtro por filmes ou séries.
+
+**Perfil.** Seus gêneros favoritos, os que você evita, os motivos pelos quais você desiste de séries, e backup: exporte seu perfil para um arquivo e importe em outro aparelho.
+
+## Privacidade
+
+Tudo fica salvo só no seu celular. Não existe servidor nem conta. A chave do TMDB fica apenas no aparelho e nunca entra no backup. Não envie seu arquivo de backup para este repositório, ele contém as suas avaliações.
+
+## Como usar
+
+1. Abra o endereço acima no Chrome do celular e use "Adicionar à tela inicial".
+2. Crie uma chave gratuita da API do TMDB e cole na primeira tela.
+3. Avalie alguns títulos populares e comece a arrastar.
+
+## Créditos
+
+Dados e imagens do TMDB. Este app usa a API do TMDB, mas não é endossado nem certificado pelo TMDB.
