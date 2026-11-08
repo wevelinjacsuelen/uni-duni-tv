@@ -1209,6 +1209,40 @@
     }
   }
 
+  /* ---------- resultados de tema/gênero: só os que você ainda não avaliou ---------- */
+  const kwQuery = (kw, type) => kw.genres
+    ? (type === "movie" ? { genres: kw.genres, allGenres: true, minVotes: 100 } : { genres: kw.genres, allGenres: true, keywords: kw.id ? [kw.id] : [], minVotes: 20 })
+    : (type === "movie" ? { keywords: [kw.id], minVotes: 5 } : { keywords: [kw.id], minVotes: 0 });
+  const kwVisible = kw => [...kw.res.items.values()].filter(i => kw.res.showRated || (!S.items[i.k] && !engine.seen(i.k)));
+
+  async function kwMore(kw, target) {
+    const r = kw.res; r.busy = true; r.err = "";
+    try {
+      for (let guard = 0; guard < 6 && kwVisible(kw).length < target && (r.m < r.mPages || r.t < r.tPages); guard++) {
+        const jobs = [];
+        if (r.m < r.mPages) jobs.push(tmdb.discover("movie", Object.assign({ page: ++r.m }, kwQuery(kw, "movie"))).then(d => { r.mTotal = d.total; r.mPages = Math.min(d.pages, 500); return d.results; }));
+        if (r.t < r.tPages) jobs.push(tmdb.discover("tv", Object.assign({ page: ++r.t }, kwQuery(kw, "tv"))).then(d => { r.tTotal = d.total; r.tPages = Math.min(d.pages, 500); return d.results; }));
+        const got = [].concat(...await Promise.all(jobs)).filter(i => i.poster).sort((x, y) => y.pop - x.pop);
+        got.forEach(i => { if (!r.items.has(i.k)) r.items.set(i.k, i); });
+      }
+    } catch (e) { r.err = e.message || "Erro ao buscar."; }
+    r.busy = false;
+  }
+
+  function kwRender(kw) {
+    const list = $("#kwList"); if (!list || U.search.kw !== kw) return;
+    const r = kw.res, vis = kwVisible(kw), hidden = r.items.size - vis.length;
+    const total = r.mTotal + r.tTotal;
+    $("#kwN").textContent = `${total} título${total === 1 ? "" : "s"} encontrado${total === 1 ? "" : "s"} (${r.mTotal} filme${r.mTotal === 1 ? "" : "s"}, ${r.tTotal} série${r.tTotal === 1 ? "" : "s"})`;
+    list.innerHTML = vis.length ? vis.map(rowHTML).join("") : (r.err ? `<p class="err">${esc(r.err)}</p>` : `<p class="muted">${r.busy ? "" : "Nada novo por aqui."}</p>`);
+    const more = r.m < r.mPages || r.t < r.tPages;
+    $("#kwMore").innerHTML = `${hidden > 0 || r.showRated ? `<p class="muted small" style="margin:14px 0 0">${r.showRated ? "Mostrando também os que você já avaliou." : `Ocultei ${hidden} que você já avaliou ou pulou.`} <button class="link" id="kwShow">${r.showRated ? "Ocultar" : "Mostrar"}</button></p>` : ""}
+      ${more ? `<button class="btn block" id="kwMoreBtn" style="margin-top:14px" ${r.busy ? "disabled" : ""}>${r.busy ? "Carregando…" : "Ver mais"}</button>` : ""}`;
+    bindRows(list, vis, () => kwRender(kw), rateSimilar);
+    const sh = $("#kwShow"); if (sh) sh.onclick = () => { r.showRated = !r.showRated; kwRender(kw); };
+    const mb = $("#kwMoreBtn"); if (mb) mb.onclick = async () => { mb.disabled = true; mb.textContent = "Carregando…"; await kwMore(kw, vis.length + 15); kwRender(kw); };
+  }
+
   async function drawKwResults(kw, seq) {
     if (kw.person) return kw.credits ? drawPerson(kw, seq) : loadPerson(kw, seq);
     const box = $("#sr");
@@ -1216,7 +1250,8 @@
       <div class="chips wrap" style="margin-bottom:6px"><button class="chip solid" id="kwOff">${esc(kw.label)} ${IC.x.replace("<svg", '<svg width="14" height="14"')}</button></div>
       <div class="section-h"><div><h2>Resultados para "${esc(kw.label)}"</h2><div class="muted small" id="kwN"></div></div></div>
       <button class="btn primary block" id="kwDeck">${IC.sparkle} Ver em cartões</button>
-      <div class="list" id="kwList"><div style="display:grid;place-items:center;padding:30px"><div class="spinner"></div></div></div>`;
+      <div class="list" id="kwList"><div style="display:grid;place-items:center;padding:30px"><div class="spinner"></div></div></div>
+      <div id="kwMore"></div>`;
     $("#kwOff").onclick = () => { U.search.kw = null; drawSearch(); };
     $("#kwDeck").onclick = () => {
       U.mode = kw.genres
@@ -1224,20 +1259,12 @@
         : { label: `Tema: ${kw.label}`, genres: [], kw, maxRuntime: 0, page: 0 };
       U.deck = []; U.deckError = null; go("home");
     };
-    try {
-      const [m, t] = await Promise.all([
-        tmdb.discover("movie", kw.genres ? { genres: kw.genres, allGenres: true, minVotes: 100 } : { keywords: [kw.id], minVotes: 5 }),
-        tmdb.discover("tv", kw.genres ? { genres: kw.genres, allGenres: true, keywords: kw.id ? [kw.id] : [], minVotes: 20 } : { keywords: [kw.id], minVotes: 0 })
-      ]);
+    if (!kw.res) kw.res = { items: new Map(), m: 0, t: 0, mPages: 1, tPages: 1, mTotal: 0, tTotal: 0, showRated: false, busy: false, err: "" };
+    if (!kw.res.items.size) {
+      await kwMore(kw, 15);
       if (seq !== U.search.seq) return;
-      const items = m.results.concat(t.results).filter(i => i.poster).sort((a, b) => b.pop - a.pop);
-      const total = m.total + t.total;
-      $("#kwN").textContent = `${total} título${total === 1 ? "" : "s"} encontrado${total === 1 ? "" : "s"} (${m.total} filme${m.total === 1 ? "" : "s"}, ${t.total} série${t.total === 1 ? "" : "s"})`;
-      $("#kwList").innerHTML = items.length ? items.map(rowHTML).join("") : `<p class="muted">Nenhum título marcado com esse tema.</p>`;
-      bindRows($("#kwList"), items, () => drawKwResults(kw, U.search.seq), rateSimilar);
-    } catch (e) {
-      $("#kwList").innerHTML = `<p class="err">${esc(e.message)}</p>`;
     }
+    kwRender(kw);
   }
 
   function rowHTML(it) {
@@ -1486,7 +1513,7 @@
   /* =========================================================
      INÍCIO DO APP
      ========================================================= */
-  UD.VERSION = "1.6.4";
+  UD.VERSION = "1.7.0";
   function start() {
     const sv = $("#spVer"); if (sv) sv.textContent = "versão " + UD.VERSION;
     if (!S.apiKey) renderWelcome();
