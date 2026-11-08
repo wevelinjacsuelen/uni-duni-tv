@@ -312,10 +312,10 @@
       ${U.mode ? `<div class="mode-banner">${IC.sparkle.replace("<svg", '<svg width="18" height="18"')}<span>${esc(U.mode.label)}</span><button id="mOff" aria-label="Sair do atalho">${IC.x.replace("<svg", '<svg width="18" height="18"')}</button></div>` : ""}
       <div class="deck-wrap" id="deck"></div>
       <div class="actions">
-        <button class="act nope" data-a="nope" aria-label="Não gosto">${IC.x}</button>
-        <button class="act seen" data-a="seen" aria-label="Já assisti">${IC.up}</button>
-        <button class="act skip" data-a="skip" aria-label="Pular">${IC.skip}</button>
-        <button class="act want" data-a="want" aria-label="Quero ver">${IC.heart}</button>
+        <div class="act-w"><button class="act nope" data-a="nope" aria-label="Não gosto">${IC.x}</button><span>Não gosto</span></div>
+        <div class="act-w"><button class="act seen" data-a="seen" aria-label="Já assisti">${IC.up}</button><span>Já assisti</span></div>
+        <div class="act-w"><button class="act skip" data-a="skip" aria-label="Pular">${IC.skip}</button><span>Pular</span></div>
+        <div class="act-w want"><button class="act want" data-a="want" aria-label="Quero ver">${IC.heart}</button><span>Quero ver</span></div>
       </div>`;
     $("#hType").onclick = e => {
       const b = e.target.closest("button"); if (!b || b.dataset.t === S.type) return;
@@ -955,7 +955,7 @@
   /* =========================================================
      INÍCIO DO APP
      ========================================================= */
-  UD.VERSION = "1.0.3";
+  UD.VERSION = "1.0.4";
   function start() {
     if (!S.apiKey) renderWelcome();
     else if (!S.onboarded) renderOnboarding();

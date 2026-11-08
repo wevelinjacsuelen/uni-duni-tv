@@ -438,3 +438,11 @@ select.sel {
 .cap span { display: block; font-size: 12px; color: var(--muted); margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 .ob-footer { padding-top: 34px; background: linear-gradient(transparent, var(--bg) 42%); }
+
+/* legenda embaixo dos botões */
+.actions { align-items: flex-start; gap: 14px; }
+.act-w { display: flex; flex-direction: column; align-items: center; gap: 6px; width: 74px; }
+.act-w span { font-size: 12.5px; color: var(--muted); white-space: nowrap; }
+.act-w.want span { color: var(--amber-2); }
+.act-w:has(.act.nope) span { color: #ff8a8a; }
+.act-w .act, .act.seen, .act.skip { width: 60px; height: 60px; }
