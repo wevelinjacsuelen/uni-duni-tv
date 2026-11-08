@@ -20,6 +20,7 @@
     bookmark: I('<path d="M6 3h12v18l-6-4-6 4z"/>'),
     user: I('<circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-7 8-7s8 3 8 7"/>'),
     check: I('<path d="M5 12l5 5L20 7"/>'),
+    pause: I('<path d="M9 5v14M15 5v14"/>'),
     thumbUp: I('<path d="M7 11v9H4v-9zM7 11l4-8c1.7 0 3 1.3 3 3v3h5.2a2 2 0 0 1 2 2.3l-1.2 7A2 2 0 0 1 18 20H7"/>'),
     thumbDown: I('<path d="M7 13V4H4v9zM7 13l4 8c1.7 0 3-1.3 3-3v-3h5.2a2 2 0 0 0 2-2.3l-1.2-7A2 2 0 0 0 18 4H7"/>'),
     clap: I('<rect x="3" y="9" width="18" height="12" rx="2"/><path d="M3 9l1.5-5 16 3.5L21 9M8 4.5l2 4.2M13 5.6l2 3.4"/><path d="M10 13l5 2.5-5 2.5z" fill="currentColor"/>'),
@@ -64,7 +65,10 @@
     return parts.map(p => `<span>${p}</span>`).join('<span class="dot"></span>');
   }
   const ratingPill = v => v ? `<span class="rating">${IC.star}${String(v.toFixed ? v.toFixed(1) : v).replace(".", ",")}</span>` : "";
-  const STATUS_TXT = { want: "Quero ver", liked: "Assisti e gostei", disliked: "Assisti e não gostei", dislike: "Não gosto" };
+  const STATUS_TXT = { want: "Quero ver", liked: "Assisti e gostei", disliked: "Assisti e não gostei", dropped: "Desisti no meio", dislike: "Não gosto" };
+  const REASONS = [["repetitivo", "Ficou repetitivo"], ["enrolou", "Enrolou ou perdeu a graça"], ["parei", "Parei e nunca voltei"], ["cancelada", "Foi cancelada"]];
+  const REASON_TXT = Object.fromEntries(REASONS);
+  const statusText = r => r.status === "dropped" && r.reason && REASON_TXT[r.reason] ? `Desisti: ${REASON_TXT[r.reason].toLowerCase()}` : STATUS_TXT[r.status];
 
   let toastTimer;
   function toast(msg, action, fn, ms = 4000) {
@@ -106,11 +110,37 @@
           <div class="two">
             <button class="btn primary" data-a="liked">${IC.thumbUp} Gostei</button>
             <button class="btn" data-a="disliked">${IC.thumbDown} Não gostei</button>
+            <button class="btn wide3" data-a="dropped">${IC.pause} Desisti no meio</button>
           </div>
           <button class="cancel" data-a="">Cancelar</button>
         </div>`, { center: true, onClose: () => { if (!answered) resolve(null); } });
       $$("[data-a]", ov).forEach(b => b.onclick = () => { answered = true; resolve(b.dataset.a || null); closeOverlay(); });
     });
+  }
+
+  function askReason(title) {
+    return new Promise(resolve => {
+      let answered = false;
+      const ov = openOverlay(`
+        <div class="modal">
+          <h2>Por que desistiu?</h2>
+          <p>${title ? esc(title) : ""}</p>
+          <div class="reasons">
+            ${REASONS.map(([k, t]) => `<button class="btn" data-r="${k}">${t}</button>`).join("")}
+          </div>
+          <button class="cancel" data-r="">Pular, sem motivo</button>
+        </div>`, { center: true, onClose: () => { if (!answered) resolve(""); } });
+      $$("[data-r]", ov).forEach(b => b.onclick = () => { answered = true; resolve(b.dataset.r || ""); closeOverlay(); });
+    });
+  }
+
+  /* pergunta tudo de uma vez: gostou / não gostou / desistiu (+ motivo). Devolve {status, reason} ou null */
+  async function askWatched(title) {
+    const status = await askLiked(title);
+    if (!status) return null;
+    if (status !== "dropped") return { status, reason: "" };
+    await new Promise(r => setTimeout(r, 80)); // deixa a janela anterior fechar
+    return { status, reason: await askReason(title) };
   }
 
   function confirmBox(title, text, okLabel, danger) {
@@ -253,11 +283,11 @@
     const ob = U.ob;
     $("#obGrid").innerHTML = ob.items.map(it => {
       const st = S.items[it.k] && S.items[it.k].status;
-      const badge = st ? `<span class="badge">${{ want: IC.heart, liked: IC.thumbUp, disliked: IC.thumbDown, dislike: IC.x }[st]}</span>` : "";
+      const badge = st ? `<span class="badge">${{ want: IC.heart, liked: IC.thumbUp, disliked: IC.thumbDown, dropped: IC.pause, dislike: IC.x }[st]}</span>` : "";
       let menu = "";
       if (ob.open === it.k) {
         menu = ob.open2 === it.k
-          ? `<div class="menu"><div class="muted small" style="text-align:center">Gostou?</div><div class="row"><button data-s="liked">${"👍"}</button><button data-s="disliked">${"👎"}</button></div><button data-s="back">Voltar</button></div>`
+          ? `<div class="menu"><div class="muted small" style="text-align:center">Gostou?</div><div class="row"><button data-s="liked">${"👍"}</button><button data-s="disliked">${"👎"}</button></div><button data-s="dropped">⏸ Desisti</button><button data-s="back">Voltar</button></div>`
           : `<div class="menu">
                <button data-s="seen">✓ Assisti</button>
                <button data-s="want" class="want">♡ Tenho interesse</button>
@@ -287,6 +317,11 @@
       const s = sb.dataset.s;
       if (s === "seen") { ob.open2 = k; drawOb(); return; }
       if (s === "back") { ob.open2 = null; drawOb(); return; }
+      if (s === "dropped") {
+        ob.open = null; ob.open2 = null; drawOb();
+        askReason(it.title).then(r => { store.setStatus(it, "dropped", r); drawOb(); });
+        return;
+      }
       store.setStatus(it, s === "clear" ? null : s);
       ob.open = null; ob.open2 = null; drawOb(); return;
     }
@@ -455,9 +490,9 @@
     try {
       if (kind === "seen") {
         await flyOut(card, "seen");
-        const r = await askLiked(it.title);
+        const r = await askWatched(it.title);
         if (!r) { drawDeck(); return; }
-        commit(it, r);
+        commit(it, r.status, r.reason);
       } else {
         await flyOut(card, kind);
         commit(it, kind === "want" ? "want" : kind === "nope" ? "dislike" : "skip");
@@ -465,20 +500,20 @@
     } finally { busy = false; }
   }
 
-  function commit(it, status) {
+  function commit(it, status, reason) {
     let undo;
     if (status === "skip") {
       const prevSkip = S.skips[it.k];
       S.skips[it.k] = Date.now(); store.save();
       undo = () => { if (prevSkip) S.skips[it.k] = prevSkip; else delete S.skips[it.k]; store.save(); };
     } else {
-      const prev = store.setStatus(it, status);
+      const prev = store.setStatus(it, status, reason);
       undo = () => store.restore(it.k, prev);
     }
     U.deck = U.deck.filter(c => c.k !== it.k);
     drawDeck();
     fillDeck();
-    const msg = { want: "Adicionado a Quero ver", dislike: "Anotado: não gosto", liked: "Assistido e gostou", disliked: "Assistido e não gostou", skip: "Pulado" }[status];
+    const msg = { want: "Adicionado a Quero ver", dislike: "Anotado: não gosto", liked: "Assistido e gostou", disliked: "Assistido e não gostou", dropped: "Anotado: desistiu", skip: "Pulado" }[status];
     toast(msg, "Desfazer", () => {
       undo();
       U.deck = [it].concat(U.deck.filter(c => c.k !== it.k));
@@ -543,7 +578,7 @@
       <h2>${esc(d.title)}</h2>
       ${d.original && d.original !== d.title ? `<div class="muted small">${esc(d.original)}</div>` : ""}
       <div class="meta" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:6px;color:var(--muted);font-size:14px">${metaLine(d, true)}${d.vote ? `<span class="dot" style="width:3px;height:3px;border-radius:50%;background:currentColor"></span>${ratingPill(d.vote)}` : ""}</div>
-      ${rec ? `<div class="status small" style="color:var(--amber-2);margin-top:6px">Na sua lista: ${STATUS_TXT[rec.status]}</div>` : ""}
+      ${rec ? `<div class="status small" style="color:var(--amber-2);margin-top:6px">Na sua lista: ${statusText(rec)}</div>` : ""}
       <div class="detail-genres">${gnames.map(n => `<span>${esc(n)}</span>`).join("")}</div>
       <div class="detail-ov">${d.overview ? esc(d.overview) : "Sinopse não disponível."}${d.overviewEn ? ' <span class="muted small">(sinopse só em inglês)</span>' : ""}</div>
       ${d.cast && d.cast.length ? `<div class="cast">Com ${esc(d.cast.join(", "))}</div>` : ""}
@@ -554,14 +589,15 @@
     });
     $$("[data-s]", sheet).forEach(b => b.onclick = async () => {
       const s = b.dataset.s;
-      let status = s;
+      let status = s, reason = "";
       if (s === "seen") {
         closeOverlay();
         await new Promise(r => setTimeout(r, 60));
-        status = await askLiked(d.title);
-        if (!status) return;
+        const r = await askWatched(d.title);
+        if (!r) return;
+        status = r.status; reason = r.reason;
       } else closeOverlay();
-      const prev = store.setStatus(d, s === "clear" ? null : status);
+      const prev = store.setStatus(d, s === "clear" ? null : status, reason);
       toast(s === "clear" ? "Removido das listas" : `Marcado: ${STATUS_TXT[status]}`, "Desfazer", () => { store.restore(d.k, prev); ctx.refresh && ctx.refresh(); });
       ctx.refresh && ctx.refresh();
     });
@@ -748,7 +784,7 @@
       <div class="body">
         <h3>${esc(it.title)}</h3>
         <div class="meta"><span>${TYPE_N[it.type]}</span>${it.year ? `<span>· ${esc(it.year)}</span>` : ""}${it.vote ? ratingPill(it.vote) : ""}</div>
-        ${rec ? `<div class="status">${STATUS_TXT[rec.status]}</div>` : it.overview ? `<p>${esc(it.overview)}</p>` : ""}
+        ${rec ? `<div class="status">${statusText(rec)}</div>` : it.overview ? `<p>${esc(it.overview)}</p>` : ""}
       </div>
       <span class="chev">${IC.chev}</span>
     </button>`;
@@ -856,7 +892,8 @@
     const c = store.counts();
     const groups = {
       want: { n: "Quero ver", f: i => i.status === "want", c: c.want, ic: IC.heart },
-      watched: { n: "Assistidos", f: i => i.status === "liked" || i.status === "disliked", c: c.watched, ic: IC.check },
+      watched: { n: "Assistidos", f: i => i.status === "liked" || i.status === "disliked" || i.status === "dropped", c: c.watched, ic: IC.check },
+      dropped: { n: "Desisti", f: i => i.status === "dropped", c: c.dropped, ic: IC.pause },
       nope: { n: "Não gostei", f: i => i.status === "dislike" || i.status === "disliked", c: c.rejected, ic: IC.thumbDown }
     };
     const g = groups[U.listTab];
@@ -890,6 +927,7 @@
         <p class="note" style="text-align:left">100% é o gênero que você mais curte. Os outros são comparados a ele.</p>` : `<p class="muted">Avalie alguns títulos para ver seu gosto aqui.</p>`}
       ${gb.neg.length ? `<div class="section-h"><h3>Você costuma evitar</h3></div><div class="chips wrap">${gb.neg.map(k => `<span class="chip">${UD.GENRE_BY_KEY[k].e} ${UD.GENRE_BY_KEY[k].n}</span>`).join("")}</div>` : ""}
 
+      ${droppedHTML()}
       <div class="section-h"><h2>Backup</h2></div>
       <p class="muted small" style="margin:0">Seu perfil fica só neste celular. Se limpar os dados do navegador, ele some. Guarde um backup de vez em quando.</p>
       <div class="backup-row">
@@ -920,6 +958,17 @@
         store.reset(); U.deck = []; U.mode = null; U.ob.items = []; renderOnboarding();
       }
     };
+  }
+
+  function droppedHTML() {
+    const d = Object.values(S.items).filter(i => i.status === "dropped");
+    if (!d.length) return "";
+    const by = {};
+    d.forEach(i => { const k = REASON_TXT[i.reason] ? i.reason : "_"; by[k] = (by[k] || 0) + 1; });
+    const rows = Object.entries(by).sort((a, b) => b[1] - a[1]).map(([k, n]) => `<span class="chip">${k === "_" ? "Sem motivo" : REASON_TXT[k]} <small>${n}</small></span>`).join("");
+    return `<div class="section-h"><h2>Por que você desiste</h2></div>
+      <p class="muted small" style="margin:0 0 10px">${d.length} título${d.length > 1 ? "s" : ""} que você começou e largou.</p>
+      <div class="chips wrap">${rows}</div>`;
   }
 
   function exportBackup() {
@@ -955,7 +1004,7 @@
   /* =========================================================
      INÍCIO DO APP
      ========================================================= */
-  UD.VERSION = "1.0.4";
+  UD.VERSION = "1.1.0";
   function start() {
     if (!S.apiKey) renderWelcome();
     else if (!S.onboarded) renderOnboarding();

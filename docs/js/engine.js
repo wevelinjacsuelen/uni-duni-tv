@@ -1,7 +1,7 @@
 /* Uni Duni TV: o algoritmo que aprende o seu gosto.
    Sem IA paga: cada avaliação soma ou tira pontos dos gêneros e temas do título. */
 (function () {
-  const W = { liked: 3, want: 1.5, dislike: -2, disliked: -2.5 };
+  const W = { liked: 3, want: 1.5, dropped: 0.8, dislike: -2, disliked: -2.5 };
   const SKIP_DAYS = 7;
   const EXPLORE_EVERY = 5; // 1 em cada 5 cartões é fora da sua bolha (20%)
 

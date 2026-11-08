@@ -35,8 +35,9 @@
   }
 
   /* status possíveis:
-     want = quero ver | dislike = não gosto (não vi) | liked = vi e gostei | disliked = vi e não gostei */
-  function setStatus(it, status) {
+     want = quero ver | dislike = não gosto (não vi) | liked = vi e gostei | disliked = vi e não gostei
+     dropped = comecei e desisti (com motivo opcional em "reason") */
+  function setStatus(it, status, reason) {
     const prev = S.items[it.k] ? Object.assign({}, S.items[it.k]) : null;
     if (!status) delete S.items[it.k];
     else {
@@ -44,6 +45,7 @@
         k: it.k, id: it.id, type: it.type, title: it.title, poster: it.poster || null,
         year: it.year || "", vote: it.vote || 0, genres: it.genres || [], status, at: Date.now()
       };
+      if (status === "dropped" && reason) S.items[it.k].reason = reason;
       if (!prev) S.sinceBackup++;
     }
     delete S.skips[it.k];
@@ -57,9 +59,9 @@
   }
 
   function counts() {
-    const c = { total: 0, want: 0, liked: 0, disliked: 0, dislike: 0 };
+    const c = { total: 0, want: 0, liked: 0, disliked: 0, dislike: 0, dropped: 0 };
     Object.values(S.items).forEach(i => { c.total++; c[i.status]++; });
-    c.watched = c.liked + c.disliked;
+    c.watched = c.liked + c.disliked + c.dropped;
     c.rejected = c.dislike + c.disliked;
     return c;
   }
