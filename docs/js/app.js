@@ -1060,15 +1060,18 @@
 
     try {
       const exact = UD.DICT[normTxt(q)] || UD.DICT[q.toLowerCase().trim()];
-      const [kwRes, multi] = await Promise.all([
+      const [kwRes, multi, ppl] = await Promise.all([
         tmdb.get("/search/keyword", { query: exact || q, language: "en-US" }).catch(() => ({ results: [] })),
-        tmdb.get("/search/multi", { query: q, include_adult: "false" })
+        tmdb.get("/search/multi", { query: q, include_adult: "false" }),
+        tmdb.get("/search/person", { query: q, include_adult: "false" }).catch(() => ({ results: [] }))
       ]);
       if (seq !== U.search.seq) return;
       const localIds = new Set(local.map(t => S.learned[t] && S.learned[t].id).filter(Boolean));
       const remote = (kwRes.results || []).filter(k => !localIds.has(k.id)).slice(0, 5);
-      $("#sugRemote").outerHTML = remote.map(k => `<button class="chip" data-kwid="${k.id}" data-kwname="${esc(k.name)}">${esc(k.name)} <small>tema</small></button>`).join("");
-      if (!local.length && !remote.length) $("#sug").innerHTML = `<span class="muted small">Nenhum tema com esse nome. Veja os títulos abaixo.</span>`;
+      const people = (ppl.results || []).filter(x => ["Acting", "Directing", "Writing"].includes(x.known_for_department)).sort((a, b) => b.popularity - a.popularity).slice(0, 2);
+      const pchips = people.map(x => `<button class="chip" data-pid="${x.id}" data-pname="${esc(x.name)}" data-pdept="${x.known_for_department}">${IC.user.replace("<svg", '<svg width="14" height="14"')} ${esc(x.name)} <small>pessoa</small></button>`).join("");
+      $("#sugRemote").outerHTML = pchips + remote.map(k => `<button class="chip" data-kwid="${k.id}" data-kwname="${esc(k.name)}">${esc(k.name)} <small>tema</small></button>`).join("");
+      if (!local.length && !remote.length && !people.length) $("#sug").innerHTML = `<span class="muted small">Nenhum tema com esse nome. Veja os títulos abaixo.</span>`;
       const items = tmdb.list(multi).filter(i => i.poster).slice(0, 20);
       $("#titles").innerHTML = items.length
         ? `<div class="section-h"><h2>Títulos</h2></div><div class="list">${items.map(rowHTML).join("")}</div>`
@@ -1101,6 +1104,12 @@
 
   async function onThemeChip(e) {
     const b = e.target.closest("button.chip"); if (!b) return;
+    if (b.dataset.pid) {
+      const role = { Acting: "act", Directing: "dir", Writing: "wri" }[b.dataset.pdept] || "act";
+      U.search.kw = { label: b.dataset.pname, person: { id: +b.dataset.pid, name: b.dataset.pname }, role, ptype: null, credits: null };
+      U.search.q = b.dataset.pname; const qi = $("#q"); if (qi) { qi.value = b.dataset.pname; $("#qx").classList.remove("hidden"); }
+      return drawSearch();
+    }
     if (b.dataset.kwid) {
       const kw = { id: +b.dataset.kwid, name: b.dataset.kwname };
       const q = U.search.q.trim().toLowerCase();
@@ -1120,7 +1129,62 @@
     } catch (err) { toast(err.message); } finally { b.disabled = false; }
   }
 
+  /* ---------- pessoa: filmografia ---------- */
+  const ROLES = [["act", "Atuou"], ["dir", "Dirigiu"], ["wri", "Escreveu"]];
+  const WRITE_JOBS = ["Writer", "Screenplay", "Novel", "Author", "Story", "Creator", "Characters", "Book", "Teleplay", "Original Story"];
+  function splitCredits(d) {
+    const out = { act: new Map(), dir: new Map(), wri: new Map() };
+    const put = (m, r) => { const it = tmdb.norm(r, r.media_type); if (it && it.poster && !m.has(it.k)) m.set(it.k, it); };
+    (d.cast || []).forEach(r => { if (!(r.genre_ids || []).some(g => g === 10767 || g === 10763)) put(out.act, r); });
+    (d.crew || []).forEach(r => {
+      if (r.job === "Director") put(out.dir, r);
+      if (r.department === "Writing" || WRITE_JOBS.includes(r.job)) put(out.wri, r);
+    });
+    const res = {};
+    Object.keys(out).forEach(k => (res[k] = [...out[k].values()].sort((a, b) => b.pop - a.pop)));
+    return res;
+  }
+  function drawPerson(kw, seq) {
+    const box = $("#sr"); if (!box || !kw.credits) return;
+    const c = kw.credits;
+    const list = (role, type) => c[role].filter(i => i.type === type);
+    if (!kw.ptype) { kw.ptype = list(kw.role, "movie").length || !list(kw.role, "tv").length ? "movie" : "tv"; }
+    // se o papel escolhido está vazio nesse tipo, escolhe o primeiro que tiver algo
+    if (!list(kw.role, kw.ptype).length) { const r = ROLES.find(([k]) => list(k, kw.ptype).length); if (r) kw.role = r[0]; }
+    const items = list(kw.role, kw.ptype);
+    box.innerHTML = `
+      <div class="chips wrap" style="margin-bottom:6px"><button class="chip solid" id="kwOff">${esc(kw.person.name)} ${IC.x.replace("<svg", '<svg width="14" height="14"')}</button></div>
+      <div class="seg" id="pT" style="margin:10px 0 4px">${[["movie", "Filmes"], ["tv", "Séries"]].map(([k, n]) => `<button data-t="${k}" class="${k === kw.ptype ? "on" : ""}">${n} (${new Set(ROLES.flatMap(([r]) => list(r, k).map(i => i.k))).size})</button>`).join("")}</div>
+      <div class="tabs" id="pR" style="margin-top:12px">${ROLES.filter(([r]) => list(r, kw.ptype).length).map(([r, n]) => `<button class="chip ${r === kw.role ? "solid" : ""}" data-r="${r}">${n} (${list(r, kw.ptype).length})</button>`).join("")}</div>
+      <div class="list" id="kwList">${items.length ? items.map(it => { const rec = S.items[it.k]; return `<div class="row-wrap">${rowHTML(it)}${rec ? `<span class="quick-ph"></span>` : `<button class="quick" data-seen="${it.k}" aria-label="Já assisti">${IC.check}<span>Assisti</span></button>`}</div>`; }).join("") : `<p class="muted" style="margin-top:20px">Nada encontrado para ${esc(kw.person.name)} aqui.</p>`}</div>`;
+    $("#kwOff").onclick = () => { U.search.kw = null; drawSearch(); };
+    $("#pT").onclick = e => { const b = e.target.closest("[data-t]"); if (b) { kw.ptype = b.dataset.t; drawPerson(kw); } };
+    $("#pR").onclick = e => { const b = e.target.closest("[data-r]"); if (b) { kw.role = b.dataset.r; drawPerson(kw); } };
+    bindRows($("#kwList"), items, () => drawPerson(kw), rateSimilar);
+    $("#kwList").addEventListener("click", async e => {
+      const q = e.target.closest("[data-seen]"); if (!q) return;
+      const it = items.find(i => i.k === q.dataset.seen); if (!it) return;
+      const r = await askWatched(it.title); if (!r) return;
+      const prev = store.setStatus(it, r.status, r.reason);
+      toast(`Marcado: ${STATUS_TXT[r.status]}`, "Desfazer", () => { store.restore(it.k, prev); drawPerson(kw); });
+      drawPerson(kw);
+    });
+  }
+  async function loadPerson(kw, seq) {
+    const box = $("#sr");
+    box.innerHTML = `<div class="chips wrap" style="margin-bottom:6px"><button class="chip solid" id="kwOff">${esc(kw.person.name)} ${IC.x.replace("<svg", '<svg width="14" height="14"')}</button></div><div style="display:grid;place-items:center;padding:30px"><div class="spinner"></div></div>`;
+    $("#kwOff").onclick = () => { U.search.kw = null; drawSearch(); };
+    try {
+      if (!kw.credits) kw.credits = splitCredits(await tmdb.get(`/person/${kw.person.id}/combined_credits`));
+      if (seq !== U.search.seq) return;
+      drawPerson(kw, seq);
+    } catch (e) {
+      if (seq === U.search.seq) box.innerHTML += `<p class="err">${esc(e.message)}</p>`;
+    }
+  }
+
   async function drawKwResults(kw, seq) {
+    if (kw.person) return kw.credits ? drawPerson(kw, seq) : loadPerson(kw, seq);
     const box = $("#sr");
     box.innerHTML = `
       <div class="chips wrap" style="margin-bottom:6px"><button class="chip solid" id="kwOff">${esc(kw.label)} ${IC.x.replace("<svg", '<svg width="14" height="14"')}</button></div>
@@ -1395,14 +1459,15 @@
   /* =========================================================
      INÍCIO DO APP
      ========================================================= */
-  UD.VERSION = "1.5.3";
+  UD.VERSION = "1.6.0";
   function start() {
+    const sv = $("#spVer"); if (sv) sv.textContent = "versão " + UD.VERSION;
     if (!S.apiKey) renderWelcome();
     else if (!S.onboarded) renderOnboarding();
     else go("home");
     setTimeout(() => {
       const sp = $("#splash"); if (sp) { sp.classList.add("out"); setTimeout(() => sp.remove(), 500); }
-    }, 900);
+    }, 1600);
     if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
     if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
       navigator.serviceWorker.register("sw.js").catch(() => {});

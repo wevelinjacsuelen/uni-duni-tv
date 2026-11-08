@@ -20,7 +20,7 @@ Acesso: https://wevelinjacsuelen.github.io/uni-duni-tv
 
 **Sequência de dias.** Conta os dias seguidos em que você marcou "assisti agora". Registrar histórico antigo não conta.
 
-**Buscar.** Procure por título ou por tema escrito do seu jeito (por exemplo "natal", "viagem no tempo"). Ao marcar um título da busca como "quero ver" ou "já assisti", aparece uma faixa "Parecidos com...". Também mostra os filmes e séries em alta da semana e permite criar atalhos pessoais, como "Domingo chuvoso", com gêneros, tema e duração.
+**Buscar.** Procure por título, por pessoa (ator, diretor ou autor, com a filmografia separada em Atuou, Dirigiu e Escreveu e botão para marcar o que já assistiu) ou por tema escrito do seu jeito (por exemplo "natal", "viagem no tempo"). Ao marcar um título da busca como "quero ver" ou "já assisti", aparece uma faixa "Parecidos com...". Também mostra os filmes e séries em alta da semana e permite criar atalhos pessoais, como "Domingo chuvoso", com gêneros, tema e duração.
 
 **Listas.** Quero ver, Assistindo (só séries), Assistidos, Desisti e Não gostei, com Filmes e Séries separados como no Início.
 

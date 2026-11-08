@@ -162,6 +162,7 @@ select.sel {
 #splash img { width: 168px; height: 168px; border-radius: 36px; }
 #splash .wordmark { font-size: 34px; }
 #splash p { margin: 0; color: var(--muted); font-size: 14px; }
+#splash small { position: absolute; left: 0; right: 0; bottom: calc(28px + env(safe-area-inset-bottom)); text-align: center; color: var(--muted); font-size: 13px; letter-spacing: .04em; }
 #splash.out { opacity: 0; pointer-events: none; }
 
 /* ---------- welcome ---------- */
@@ -527,3 +528,4 @@ select.sel {
 .streak svg { flex: none; width: 22px; height: 22px; }
 .streak.on { color: var(--text); border-color: rgba(248,165,28,.45); }
 .streak.on svg { color: var(--amber); fill: rgba(248,165,28,.25); }
+.quick-ph { flex: none; width: 58px; }
