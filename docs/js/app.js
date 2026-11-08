@@ -148,7 +148,11 @@
   }
 
   /* pergunta tudo de uma vez: gostou / não gostou / desistiu (+ motivo). Devolve {status, reason} ou null */
+  // título que ainda não estreou: não dá para "já assisti", só "quero ver"
+  const isUnreleased = it => !!(it && it.date && it.date > dayKey());
+  const fmtDate = d => d.split("-").reverse().join("/");
   async function askWatched(title, it) {
+    if (isUnreleased(it)) { toast(`Ainda não estreou (${fmtDate(it.date)}). Marcado como Quero ver.`, null, null, 4500); return { status: "want", reason: "" }; }
     const status = await askLiked(title, !!(it && it.type === "tv"));
     if (!status) return null;
     if (status === "partial") return { status: "watching", reason: "", partial: true };
@@ -588,17 +592,18 @@
     const buttons = ctx.deck
       ? `<button class="btn" data-d="nope">${IC.x} Não gosto</button>
          <button class="btn primary" data-d="want">${IC.heart} Quero ver</button>
-         <button class="btn wide" data-d="seen">${IC.check} Já assisti</button>`
+         ${isUnreleased(d) ? "" : `<button class="btn wide" data-d="seen">${IC.check} Já assisti</button>`}`
       : `${rec && rec.status === "want" ? "" : `<button class="btn primary" data-s="want">${IC.heart} Quero ver</button>`}
-         <button class="btn" data-s="seen">${IC.check} Já assisti</button>
+         ${isUnreleased(d) ? "" : `<button class="btn" data-s="seen">${IC.check} Já assisti</button>`}
          ${rec && rec.status === "dislike" ? "" : `<button class="btn" data-s="dislike">${IC.x} Não gosto</button>`}
-         ${d.type === "tv" && !(rec && rec.status === "dropped") ? `<button class="btn" data-s="drop">${IC.pause} Desisti desta série</button>` : ""}
+         ${d.type === "tv" && !isUnreleased(d) && !(rec && rec.status === "dropped") ? `<button class="btn" data-s="drop">${IC.pause} Desisti desta série</button>` : ""}
          ${rec ? `<button class="btn danger" data-s="clear">${IC.trash} Tirar das listas</button>` : ""}`;
     sheet.innerHTML = `<div class="grab"></div>
       <div class="detail-hero"><img src="${tmdb.img(d.backdrop || d.poster, "w780")}" alt=""></div>
       <h2>${esc(d.title)}</h2>
       ${d.original && d.original !== d.title ? `<div class="muted small">${esc(d.original)}</div>` : ""}
       <div class="meta" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:6px;color:var(--muted);font-size:14px">${metaLine(d, true)}${d.vote ? `<span class="dot" style="width:3px;height:3px;border-radius:50%;background:currentColor"></span>${ratingPill(d.vote)}` : ""}</div>
+      ${isUnreleased(d) ? `<div class="soon-note">Estreia em ${fmtDate(d.date)}. Ainda não dá para marcar como assistido, só como Quero ver.</div>` : ""}
       <div class="status small" id="stLab" style="color:var(--amber-2);margin-top:6px">${rec ? `Na sua lista: ${statusText(rec)}` : ""}</div>
       <div class="detail-genres">${gnames.map(n => `<span>${esc(n)}</span>`).join("")}</div>
       <div class="detail-ov">${d.overview ? esc(d.overview) : "Sinopse não disponível."}${d.overviewEn ? ' <span class="muted small">(sinopse só em inglês)</span>' : ""}</div>
@@ -849,7 +854,7 @@
     const btns = [];
     if (!done) {
       if (!rec || rec.status !== "want") btns.push(`<button class="btn primary" data-td="want:${type}">${IC.heart} Quero ver</button>`);
-      btns.push(`<button class="btn" data-td="seen:${type}">${IC.check} Já assisti</button>`);
+      if (!isUnreleased(it)) btns.push(`<button class="btn" data-td="seen:${type}">${IC.check} Já assisti</button>`);
       if (!rec || rec.status !== "dislike") btns.push(`<button class="btn" data-td="nope:${type}">${IC.x} Não gosto</button>`);
     }
     return `<div class="td-card">
@@ -1169,12 +1174,19 @@
       <div class="chips wrap" style="margin-bottom:6px"><button class="chip solid" id="kwOff">${esc(kw.person.name)} ${IC.x.replace("<svg", '<svg width="14" height="14"')}</button></div>
       <div class="seg" id="pT" style="margin:10px 0 4px">${[["movie", "Filmes"], ["tv", "Séries"]].map(([k, n]) => `<button data-t="${k}" class="${k === kw.ptype ? "on" : ""}">${n} (${new Set(ROLES.flatMap(([r]) => list(r, k).map(i => i.k))).size})</button>`).join("")}</div>
       <div class="tabs" id="pR" style="margin-top:12px">${ROLES.filter(([r]) => list(r, kw.ptype).length).map(([r, n]) => `<button class="chip ${r === kw.role ? "solid" : ""}" data-r="${r}">${n} (${list(r, kw.ptype).length})</button>`).join("")}</div>
-      <div class="list" id="kwList">${items.length ? items.map(it => { const rec = S.items[it.k]; return `<div class="row-wrap">${rowHTML(it)}${rec ? `<span class="quick-ph"></span>` : `<button class="quick" data-seen="${it.k}" aria-label="Já assisti">${IC.check}<span>Assisti</span></button>`}</div>`; }).join("") : `<p class="muted" style="margin-top:20px">Nada encontrado para ${esc(kw.person.name)} aqui.</p>`}</div>`;
+      <div class="list" id="kwList">${items.length ? items.map(it => { const rec = S.items[it.k]; return `<div class="row-wrap">${rowHTML(it)}${rec ? `<span class="quick-ph"></span>` : isUnreleased(it) ? `<button class="quick" data-want="${it.k}" aria-label="Quero ver">${IC.heart}<span>Quero ver</span></button>` : `<button class="quick" data-seen="${it.k}" aria-label="Já assisti">${IC.check}<span>Assisti</span></button>`}</div>`; }).join("") : `<p class="muted" style="margin-top:20px">Nada encontrado para ${esc(kw.person.name)} aqui.</p>`}</div>`;
     $("#kwOff").onclick = () => { U.search.kw = null; drawSearch(); };
     $("#pT").onclick = e => { const b = e.target.closest("[data-t]"); if (b) { kw.ptype = b.dataset.t; drawPerson(kw); } };
     $("#pR").onclick = e => { const b = e.target.closest("[data-r]"); if (b) { kw.role = b.dataset.r; drawPerson(kw); } };
     bindRows($("#kwList"), items, () => drawPerson(kw), rateSimilar);
     $("#kwList").addEventListener("click", async e => {
+      const w = e.target.closest("[data-want]");
+      if (w) {
+        const it = items.find(i => i.k === w.dataset.want); if (!it) return;
+        const prev = store.setStatus(it, "want");
+        toast("Adicionado a Quero ver", "Desfazer", () => { store.restore(it.k, prev); drawPerson(kw); });
+        return drawPerson(kw);
+      }
       const q = e.target.closest("[data-seen]"); if (!q) return;
       const it = items.find(i => i.k === q.dataset.seen); if (!it) return;
       const r = await askWatched(it.title, it); if (!r) return;
@@ -1234,7 +1246,7 @@
       <img src="${tmdb.img(it.poster, "w185")}" alt="" loading="lazy">
       <div class="body">
         <h3>${esc(it.title)}</h3>
-        <div class="meta"><span>${TYPE_N[it.type]}</span>${it.year ? `<span>· ${esc(it.year)}</span>` : ""}${it.vote ? ratingPill(it.vote) : ""}</div>
+        <div class="meta"><span>${TYPE_N[it.type]}</span>${it.year ? `<span>· ${esc(it.year)}</span>` : ""}${isUnreleased(it) ? `<span class="soon">Em breve</span>` : it.vote ? ratingPill(it.vote) : ""}</div>
         ${rec ? `<div class="status">${statusText(rec)}</div>` : it.overview ? `<p>${esc(it.overview)}</p>` : ""}
       </div>
       <span class="chev">${IC.chev}</span>
@@ -1358,7 +1370,7 @@
       <h1>Minhas listas</h1>
       <div class="seg" id="ltype" style="margin:10px 0 4px">${[["movie", "Filmes"], ["tv", "Séries"]].map(([k, n]) => `<button data-t="${k}" class="${k === U.listType ? "on" : ""}">${n}</button>`).join("")}</div>
       <div class="tabs" id="lt" style="margin-top:12px">${Object.entries(groups).filter(([k]) => k !== "watching" || U.listType === "tv").map(([k, v]) => `<button class="chip ${k === U.listTab ? "solid" : ""}" data-l="${k}">${v.ic.replace("<svg", '<svg width="16" height="16"')} ${v.n} (${v.c})</button>`).join("")}</div>
-      <div class="list" id="ll">${items.length ? items.map(it => U.listTab === "watching" ? nextRow(it) : U.listTab === "want" ? `<div class="row-wrap">${rowHTML(it)}<button class="quick" data-seen="${it.k}" aria-label="Já assisti">${IC.check}<span>Assisti</span></button></div>` : rowHTML(it)).join("") : `<p class="muted" style="margin-top:24px">Nada aqui ainda. ${U.listTab === "want" ? "Arraste cartões para a direita no Início." : U.listTab === "watching" ? "Abra uma série e marque os episódios que já viu." : "Marque o que já assistiu no Início ou na Busca."}</p>`}</div>`;
+      <div class="list" id="ll">${items.length ? items.map(it => U.listTab === "watching" ? nextRow(it) : U.listTab === "want" ? `<div class="row-wrap">${rowHTML(it)}${isUnreleased(it) ? `<span class="quick-ph"></span>` : `<button class="quick" data-seen="${it.k}" aria-label="Já assisti">${IC.check}<span>Assisti</span></button>`}</div>` : rowHTML(it)).join("") : `<p class="muted" style="margin-top:24px">Nada aqui ainda. ${U.listTab === "want" ? "Arraste cartões para a direita no Início." : U.listTab === "watching" ? "Abra uma série e marque os episódios que já viu." : "Marque o que já assistiu no Início ou na Busca."}</p>`}</div>`;
     $("#ltype").onclick = e => { const b = e.target.closest("[data-t]"); if (b) { U.listType = b.dataset.t; renderLists(); } };
     $("#lt").onclick = e => { const b = e.target.closest("[data-l]"); if (b) { U.listTab = b.dataset.l; renderLists(); } };
     bindRows($("#ll"), items, renderLists);
@@ -1474,7 +1486,7 @@
   /* =========================================================
      INÍCIO DO APP
      ========================================================= */
-  UD.VERSION = "1.6.2";
+  UD.VERSION = "1.6.3";
   function start() {
     const sv = $("#spVer"); if (sv) sv.textContent = "versão " + UD.VERSION;
     if (!S.apiKey) renderWelcome();
