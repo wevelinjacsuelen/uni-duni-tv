@@ -25,6 +25,7 @@
     thumbUp: I('<path d="M7 11v9H4v-9zM7 11l4-8c1.7 0 3 1.3 3 3v3h5.2a2 2 0 0 1 2 2.3l-1.2 7A2 2 0 0 1 18 20H7"/>'),
     thumbDown: I('<path d="M7 13V4H4v9zM7 13l4 8c1.7 0 3-1.3 3-3v-3h5.2a2 2 0 0 0 2-2.3l-1.2-7A2 2 0 0 0 18 4H7"/>'),
     clap: I('<rect x="3" y="9" width="18" height="12" rx="2"/><path d="M3 9l1.5-5 16 3.5L21 9M8 4.5l2 4.2M13 5.6l2 3.4"/><path d="M10 13l5 2.5-5 2.5z" fill="currentColor"/>'),
+    flame: I('<path d="M12 3c1 3-2 4-2 7a3 3 0 0 0 6 0c0-1-.5-2-1-3 3 1 5 4 5 7a8 8 0 0 1-16 0c0-4 3-6 5-8 .5 1 1 1.5 1 2z"/>'),
     play: I('<path d="M7 4l13 8-13 8z"/>'),
     plus: I('<path d="M12 5v14M5 12h14"/>'),
     edit: I('<path d="M4 20h4L19 9l-4-4L4 16z"/>'),
@@ -641,6 +642,7 @@
     const rec = S.items[k], ne = store.nextEp(k); if (!rec || !ne) return;
     const wasC = isComplete(k);
     store.setEps(k, ne[0], [ne[1]], true);
+    store.markToday();
     await afterProgress(rec, wasC);
     if (S.items[k] && S.items[k].status === "watching" && !isComplete(k)) {
       toast(`Marcado: ${epLabel(ne)}`, "Desfazer", () => { store.setEps(k, ne[0], [ne[1]], false); afterProgress(rec, false); refresh && refresh(); });
@@ -758,7 +760,8 @@
     screen.innerHTML = `
       <div class="topbar">${WM}</div>
       <h1>Sugestão de hoje</h1>
-      <div class="muted" style="margin:2px 0 16px">${cap(new Date().toLocaleDateString("pt-BR", { weekday: "long", day: "numeric", month: "long" }))}</div>
+      <div class="muted" style="margin:2px 0 10px">${cap(new Date().toLocaleDateString("pt-BR", { weekday: "long", day: "numeric", month: "long" }))}</div>
+      <div id="streak"></div>
       <div id="tdBody"></div>`;
     const body = $("#tdBody");
     body.onclick = e => {
@@ -771,6 +774,58 @@
     };
     drawToday();
     ensureToday("movie"); ensureToday("tv");
+    if (!U.cal.at || Date.now() - U.cal.at > 10 * 60e3 || U.cal.sig !== calSig()) loadCal();
+  }
+
+  /* ---------- sequência de dias ---------- */
+  function streakHTML() {
+    const { cur, today } = store.streakInfo();
+    const txt = cur ? `${cur} dia${cur > 1 ? "s" : ""} seguido${cur > 1 ? "s" : ""}${today ? "" : ". Marque um episódio ou filme hoje para manter"}` : "Sem sequência. Use o botão &quot;Vi&quot; ou &quot;Assisti&quot; quando terminar algo.";
+    return `<div class="streak ${cur ? "on" : ""}">${IC.flame}<span>${txt}</span></div>`;
+  }
+
+  /* ---------- calendário: próximos episódios e estreias ---------- */
+  U.cal = { at: 0, ev: [], loading: false };
+  const calSig = () => Object.values(S.items).filter(i => (i.type === "tv" && ["watching", "want", "liked"].includes(i.status)) || (i.type === "movie" && i.status === "want")).map(i => i.k + i.status).sort().join(",");
+  async function loadCal() {
+    if (U.cal.loading) return; U.cal.loading = true; U.cal.sig = calSig();
+    if (U.tab === "today") drawToday();
+    const today = dayKey();
+    try {
+      const mine = Object.values(S.items);
+      const tvs = mine.filter(i => i.type === "tv" && ["watching", "want", "liked"].includes(i.status))
+        .filter(i => { const t = S.tv[i.k]; return !t || !/^(Ended|Canceled)$/.test(t.st); })
+        .sort((a, b) => (b.last || b.at) - (a.last || a.at)).slice(0, 30);
+      const stale = tvs.filter(i => { const t = S.tv[i.k]; return !t || !t.at || Date.now() - t.at > 20 * 36e5; });
+      const yr = String(new Date().getFullYear());
+      const mv = mine.filter(i => i.type === "movie" && i.status === "want" && (i.date ? i.date >= today : i.year >= yr) && !(S.cal[i.k] && S.cal[i.k] < today));
+      const need = stale.concat(mv.filter(i => !(i.date || S.cal[i.k])).slice(0, 20));
+      for (let n = 0; n < need.length; n += 6) {
+        await Promise.all(need.slice(n, n + 6).map(async i => {
+          try { const d = await tmdb.details(i.type, i.id); if (i.type === "movie") S.cal[i.k] = d.date || "0000"; } catch (e) { /* segue */ }
+        }));
+      }
+      store.save();
+      const ev = [];
+      tvs.forEach(i => { const t = S.tv[i.k]; if (t && t.nx && t.nx.d && t.nx.d >= today) ev.push({ it: i, date: t.nx.d, label: `T${t.nx.s}E${t.nx.e}` }); });
+      mv.forEach(i => { const d = i.date || S.cal[i.k]; if (d && d >= today) ev.push({ it: i, date: d, label: "Estreia do filme" }); });
+      ev.sort((a, b) => a.date.localeCompare(b.date));
+      U.cal.ev = ev.slice(0, 8); U.cal.at = Date.now();
+    } catch (e) { /* sem internet: mantém o que tinha */ }
+    U.cal.loading = false;
+    if (U.tab === "today") drawToday();
+  }
+  function calHTML() {
+    const head = `<div class="section-h"><h2>Calendário</h2></div>`;
+    if (U.cal.loading && !U.cal.ev.length) return head + `<div style="display:grid;place-items:center;padding:16px"><div class="spinner"></div></div>`;
+    if (!U.cal.ev.length) return head + `<p class="muted small" style="margin:0 0 20px">Nada previsto para o que você acompanha. Aparecem aqui os próximos episódios das séries que você segue e as estreias dos filmes em Quero ver.</p>`;
+    const t0 = new Date(); t0.setHours(0, 0, 0, 0);
+    return head + `<div class="list" style="margin-bottom:22px">${U.cal.ev.map(e => {
+      const [y, m, d] = e.date.split("-").map(Number), dt = new Date(y, m - 1, d);
+      const diff = Math.round((dt - t0) / 864e5);
+      const when = diff === 0 ? "Hoje" : diff === 1 ? "Amanhã" : `Em ${diff} dias`;
+      return `<button class="row-item cal" data-k="${e.it.k}"><img src="${tmdb.img(e.it.poster, "w185")}" alt="" loading="lazy"><div class="body"><h3>${esc(e.it.title)}</h3><div class="meta"><span>${esc(e.label)}</span></div><div class="status">${when} · ${dt.toLocaleDateString("pt-BR", { weekday: "short", day: "2-digit", month: "2-digit" })}</div></div><span class="chev">${IC.chev}</span></button>`;
+    }).join("")}</div>`;
   }
 
   function todayCard(type, it) {
@@ -830,7 +885,8 @@
   function drawToday() {
     const body = $("#tdBody"); if (!body) return;
     const day = S.daily[dayKey()] || {};
-    body.innerHTML = continueHTML() + todayCard("movie", day.movie) + todayCard("tv", day.tv) + historyHTML() +
+    const sk = $("#streak"); if (sk) sk.innerHTML = streakHTML();
+    body.innerHTML = continueHTML() + calHTML() + todayCard("movie", day.movie) + todayCard("tv", day.tv) + historyHTML() +
       `<p class="note" style="margin-top:20px">A sugestão muda todo dia. A que você não viu fica em "Dias anteriores", sem contar como "não gosto".</p>`;
   }
 
@@ -1226,6 +1282,7 @@
       const it = items.find(i => i.k === q.dataset.seen); if (!it) return;
       const r = await askWatched(it.title); if (!r) return;
       const prev = store.setStatus(it, r.status, r.reason);
+      store.markToday();
       toast(`Marcado: ${STATUS_TXT[r.status]}`, "Desfazer", () => { store.restore(it.k, prev); renderLists(); });
       renderLists();
     });
@@ -1330,7 +1387,7 @@
   /* =========================================================
      INÍCIO DO APP
      ========================================================= */
-  UD.VERSION = "1.4.0";
+  UD.VERSION = "1.5.0";
   function start() {
     if (!S.apiKey) renderWelcome();
     else if (!S.onboarded) renderOnboarding();

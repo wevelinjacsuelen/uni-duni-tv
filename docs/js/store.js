@@ -15,6 +15,8 @@
     filters: { maxRuntime: 0, minYear: 0, minVote: 0 },
     prog: {},           // "tv:123" -> { "1": [1,2,3], "2": [1] } episódios vistos por temporada
     tv: {},             // "tv:123" -> { sn:[[temp, qtd]], L:[temp,ep], st:"Ended", nx:{...} } dados da série
+    streak: [],         // dias ("2026-11-08") em que você marcou "assisti agora"
+    cal: {},            // "movie:123" -> data de estreia (para o calendário)
     daily: {},          // "2026-11-08" -> { movie: {...}, tv: {...} } (sugestão do dia)
     dailyVary: true,    // varia a sugestão conforme o dia da semana
     lastBackup: null,
@@ -81,6 +83,20 @@
     if (Object.keys(p).length) S.prog[k] = p;
   }
 
+  const dk = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  function markToday() {
+    const t = dk(new Date());
+    if (!S.streak.includes(t)) { S.streak.push(t); S.streak = S.streak.slice(-400); save(); }
+  }
+  function streakInfo() {
+    const set = new Set(S.streak), d = new Date();
+    const today = set.has(dk(d));
+    if (!today) d.setDate(d.getDate() - 1);
+    let cur = 0;
+    while (set.has(dk(d))) { cur++; d.setDate(d.getDate() - 1); }
+    return { cur, today };
+  }
+
   /* status possíveis:
      want = quero ver | dislike = não gosto (não vi) | liked = vi e gostei | disliked = vi e não gostei
      dropped = comecei e desisti (com motivo opcional em "reason")
@@ -92,7 +108,7 @@
     else {
       S.items[it.k] = {
         k: it.k, id: it.id, type: it.type, title: it.title, poster: it.poster || null,
-        year: it.year || "", vote: it.vote || 0, genres: it.genres || [], status, at: Date.now()
+        year: it.year || "", date: it.date || "", vote: it.vote || 0, genres: it.genres || [], status, at: Date.now()
       };
       if (status === "dropped" && reason) S.items[it.k].reason = reason;
       if (prev && prev.last) S.items[it.k].last = prev.last;
@@ -144,5 +160,5 @@
   }
 
   UD.S = S;
-  UD.store = { save, setStatus, restore, counts, airedOf, progOf, nextEp, setEps, exportData, importData, reset };
+  UD.store = { markToday, streakInfo, save, setStatus, restore, counts, airedOf, progOf, nextEp, setEps, exportData, importData, reset };
 })();

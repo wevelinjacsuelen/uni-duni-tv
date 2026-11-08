@@ -108,7 +108,8 @@
         sn: (d.seasons || []).filter(x => x.season_number > 0).map(x => [x.season_number, x.episode_count || 0]),
         L: L ? [L.season_number, L.episode_number] : null,
         st: d.status || "",
-        nx: N ? { d: N.air_date, s: N.season_number, e: N.episode_number } : null
+        nx: N ? { d: N.air_date, s: N.season_number, e: N.episode_number } : null,
+        at: Date.now()
       };
     }
     it.imdb = d.imdb_id || (d.external_ids && d.external_ids.imdb_id) || "";
