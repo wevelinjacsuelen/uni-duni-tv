@@ -16,6 +16,8 @@ Acesso: https://wevelinjacsuelen.github.io/uni-duni-tv
 
 **Assistindo e Continue de onde parou.** Lista das séries em andamento, com o progresso e o próximo episódio. O botão "Vi T2E4" marca o próximo com um toque.
 
+**Lançamentos.** Aba com o que saiu nos últimos 45 dias e o que estreia nos próximos 120, separado em filmes e séries. Mostra em qual streaming está no Brasil (dados do JustWatch via TMDB) e permite filtrar por serviço. Esconde o que você já marcou como não gostei ou pulou.
+
 **Calendário.** Próximos episódios das séries que você acompanha e estreias dos filmes em "Quero ver".
 
 **Sequência de dias.** Conta os dias seguidos em que você marcou "assisti agora". Registrar histórico antigo não conta.

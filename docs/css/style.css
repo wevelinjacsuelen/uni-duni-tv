@@ -348,7 +348,7 @@ select.sel {
 }
 #nav button {
   flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
-  font-size: 12px; color: var(--muted); position: relative;
+  font-size: 11px; color: var(--muted); position: relative; min-width: 0; white-space: nowrap;
 }
 #nav button svg { width: 24px; height: 24px; }
 #nav button.on { color: var(--amber); }
@@ -546,3 +546,11 @@ select.sel {
 .eps-when span { flex: 1 1 100%; }
 .eps-when button { padding: 6px 14px; border-radius: 999px; border: 1px solid var(--line); background: var(--glass); color: var(--muted); font-size: 13px; }
 .eps-when button.on { background: linear-gradient(180deg, var(--amber-2), var(--amber)); color: #1a1206; border-color: transparent; font-weight: 600; }
+
+/* ---------- lançamentos ---------- */
+.lnrow { border-bottom: 1px solid var(--line); }
+.lnrow .row-item { border-bottom: 0; padding-bottom: 6px; }
+.lnline { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 0 4px 12px 86px; font-size: 12.5px; }
+.lndate { color: var(--amber-2); font-weight: 600; margin-right: 4px; }
+.pv { display: inline-flex; align-items: center; gap: 5px; background: rgba(255,255,255,.07); border: 1px solid var(--line); border-radius: 999px; padding: 2px 9px 2px 3px; font-size: 12px; }
+.pv img { width: 18px; height: 18px; border-radius: 50%; }

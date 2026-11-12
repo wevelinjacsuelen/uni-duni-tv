@@ -215,7 +215,7 @@
     nav.classList.remove("hidden");
     screen.className = "screen glow-bg";
     screen.scrollTop = 0;
-    ({ home: renderHome, today: renderToday, search: renderSearch, lists: renderLists, profile: renderProfile })[tab]();
+    ({ home: renderHome, today: renderToday, launch: renderLaunch, search: renderSearch, lists: renderLists, profile: renderProfile })[tab]();
   }
   nav.addEventListener("click", e => {
     const b = e.target.closest("button[data-tab]");
@@ -1333,6 +1333,107 @@
     };
   }
 
+  /* ---------- lançamentos ---------- */
+  const addDays = n => { const x = new Date(); x.setDate(x.getDate() + n); return `${x.getFullYear()}-${pad2(x.getMonth() + 1)}-${pad2(x.getDate())}`; };
+  U.prov = U.prov || {};
+  async function lnLoad(type, when) {
+    const L = U.ln, key = type + when;
+    const d = L.data[key] || (L.data[key] = { items: [], page: 0, pages: 1, loading: false, err: "" });
+    if (d.loading || d.page >= d.pages) return d;
+    d.loading = true; d.err = "";
+    const f = type === "movie" ? "primary_release_date" : "first_air_date";
+    const p = { region: "BR", sort_by: "popularity.desc", page: d.page + 1 };
+    if (when === "out") { p[f + ".gte"] = addDays(-45); p[f + ".lte"] = dayKey(); }
+    else { p[f + ".gte"] = addDays(1); p[f + ".lte"] = addDays(120); }
+    try {
+      const r = await tmdb.get(`/discover/${type}`, p);
+      const seen = new Set(d.items.map(i => i.k));
+      tmdb.list(r, type).forEach(i => { if (i.date && !seen.has(i.k)) d.items.push(i); });
+      d.page += 1; d.pages = Math.min(r.total_pages || 1, 5);
+    } catch (e) { d.err = e.message || "erro"; }
+    d.loading = false;
+    return d;
+  }
+  async function lnProviders(it) {
+    if (U.prov[it.k] !== undefined) return U.prov[it.k];
+    let out = null;
+    try {
+      const r = await tmdb.get(`/${it.type}/${it.id}/watch/providers`, {});
+      const br = (r.results || {}).BR;
+      out = br ? (br.flatrate || []).map(p => ({ n: p.provider_name, l: p.logo_path })) : [];
+    } catch (e) { out = null; }
+    U.prov[it.k] = out;
+    return out;
+  }
+  function lnItems() {
+    const L = U.ln, d = L.data[L.type + L.when];
+    let items = (d ? d.items : []).filter(it => {
+      const rec = S.items[it.k];
+      return !(rec && (rec.status === "disliked" || rec.status === "dislike")) && !S.skips[it.k];
+    });
+    items.sort((a, b) => L.when === "out" ? (a.date < b.date ? 1 : -1) : (a.date > b.date ? 1 : -1));
+    return items;
+  }
+  function lnProvLine(it) {
+    const L = U.ln, fd = fmtDate(it.date).replace(new RegExp("/" + new Date().getFullYear() + "$"), ""), dt = L.when === "out" ? `Saiu ${fd}` : `Estreia ${fd}`;
+    let right = "";
+    if (L.when === "out") {
+      const p = U.prov[it.k];
+      if (p === undefined) right = `<span class="muted">Buscando onde assistir...</span>`;
+      else if (p === null) right = `<span class="muted">Streaming: não consegui ver</span>`;
+      else if (!p.length) right = `<span class="muted">Sem streaming no Brasil ainda</span>`;
+      else right = p.map(x => `<span class="pv">${x.l ? `<img src="${tmdb.img(x.l, "w92")}" alt="">` : ""}${esc(x.n)}</span>`).join("");
+    }
+    return `<div class="lnline"><span class="lndate">${dt}</span>${right}</div>`;
+  }
+  function lnDraw() {
+    const L = U.ln, d = L.data[L.type + L.when], box = $("#lnL");
+    if (!box) return;
+    if (!d || (d.loading && !d.items.length)) { box.innerHTML = `<div style="display:grid;place-items:center;padding:40px"><div class="spinner"></div></div>`; $("#lnP").innerHTML = ""; return; }
+    let items = lnItems();
+    const names = {};
+    if (L.when === "out") items.forEach(it => (U.prov[it.k] || []).forEach(p => names[p.n] = (names[p.n] || 0) + 1));
+    const pn = Object.keys(names).sort((a, b) => names[b] - names[a]);
+    if (L.prov && !names[L.prov]) L.prov = "";
+    $("#lnP").innerHTML = pn.length ? [`<button class="chip ${L.prov ? "" : "on"}" data-p="">Todos</button>`].concat(pn.map(n => `<button class="chip ${L.prov === n ? "on" : ""}" data-p="${esc(n)}">${esc(n)} <small>${names[n]}</small></button>`)).join("") : "";
+    if (L.prov) items = items.filter(it => (U.prov[it.k] || []).some(p => p.n === L.prov));
+    if (!items.length) box.innerHTML = `<p class="muted" style="padding:24px 4px">${d.err ? "Não consegui carregar. Confira a internet e a chave." : "Nada por aqui ainda."}</p>`;
+    else box.innerHTML = items.map(it => `<div class="lnrow">${rowHTML(it)}${lnProvLine(it)}</div>`).join("") +
+      (d.page < d.pages ? `<button class="btn ghost" id="lnMore" style="width:100%;margin:10px 0">${d.loading ? "Carregando..." : "Ver mais"}</button>` : "");
+    bindRows(box, items, lnDraw, lnDraw);
+    const more = $("#lnMore");
+    if (more) more.onclick = ev => { ev.stopPropagation(); lnFetch(true); };
+  }
+  async function lnFetch() {
+    const L = U.ln, type = L.type, when = L.when, key = type + when;
+    const same = () => U.tab === "launch" && L.type === type && L.when === when;
+    const p = lnLoad(type, when);
+    if (same()) lnDraw();
+    const d = await p;
+    if (!same()) return;
+    lnDraw();
+    if (when === "out") {
+      const todo = d.items.filter(it => U.prov[it.k] === undefined);
+      await Promise.all(todo.map(it => lnProviders(it)));
+      if (same()) lnDraw();
+    }
+  }
+  function renderLaunch() {
+    const L = U.ln = U.ln || { type: "movie", when: "out", prov: "", data: {} };
+    screen.innerHTML = `
+      <div class="topbar">${WM}</div>
+      <h1>Lançamentos</h1>
+      <div class="seg" id="lnT" style="margin:8px 0">${[["movie", "Filmes"], ["tv", "Séries"]].map(([k, n]) => `<button data-t="${k}" class="${k === L.type ? "on" : ""}">${n}</button>`).join("")}</div>
+      <div class="seg" id="lnW" style="margin:0 0 8px">${[["out", "Já saiu"], ["soon", "Em breve"]].map(([k, n]) => `<button data-w="${k}" class="${k === L.when ? "on" : ""}">${n}</button>`).join("")}</div>
+      <div class="chips" id="lnP"></div>
+      <div id="lnL"></div>
+      <p class="muted" style="font-size:12px;margin:14px 0 4px">Onde assistir: dados do JustWatch, via TMDB. Pode faltar título ou estar desatualizado.</p>`;
+    $("#lnT").onclick = e => { const b = e.target.closest("[data-t]"); if (!b) return; L.type = b.dataset.t; L.prov = ""; renderLaunch(); };
+    $("#lnW").onclick = e => { const b = e.target.closest("[data-w]"); if (!b) return; L.when = b.dataset.w; L.prov = ""; renderLaunch(); };
+    $("#lnP").onclick = e => { const b = e.target.closest("[data-p]"); if (!b) return; L.prov = b.dataset.p; lnDraw(); };
+    lnFetch();
+  }
+
   /* ---------- atalho: criar/editar ---------- */
   function openShortcut(sc) {
     const editing = !!sc;
@@ -1652,7 +1753,7 @@
   /* =========================================================
      INÍCIO DO APP
      ========================================================= */
-  UD.VERSION = "1.8.0";
+  UD.VERSION = "1.9.0";
   function start() {
     const sv = $("#spVer"); if (sv) sv.textContent = "versão " + UD.VERSION;
     if (!S.apiKey) renderWelcome();
