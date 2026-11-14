@@ -18,6 +18,8 @@ Acesso: https://wevelinjacsuelen.github.io/uni-duni-tv
 
 **Lançamentos.** Aba com o que saiu nos últimos 45 dias e o que estreia nos próximos 120, separado em filmes e séries. Mostra em qual streaming está no Brasil (dados do JustWatch via TMDB) e permite filtrar por serviço. Esconde o que você já marcou como não gostei ou pulou.
 
+**Importar lista.** Em Listas, aba Quero ver: cole vários títulos, um por linha, e o app procura cada um e adiciona todos em Quero ver. Dá para trocar o título achado e desmarcar os errados.
+
 **Calendário.** Próximos episódios das séries que você acompanha e estreias dos filmes em "Quero ver".
 
 **Sequência de dias.** Conta os dias seguidos em que você marcou "assisti agora". Registrar histórico antigo não conta.

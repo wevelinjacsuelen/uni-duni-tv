@@ -1333,6 +1333,72 @@
     };
   }
 
+  /* ---------- importar lista de títulos ---------- */
+  function openImport(onDone) {
+    const ov = openOverlay(`<div class="sheet" id="impS"></div>`);
+    const sheet = $("#impS", ov);
+    const drawInput = (text = "") => {
+      sheet.innerHTML = `<div class="grab"></div>
+        <h2>Importar lista</h2>
+        <p class="muted" style="margin-bottom:10px">Um título por linha. Filmes e séries podem vir misturados. Se souber o ano, ponha entre parênteses: Klaus (2019). Tudo entra em Quero ver.</p>
+        <textarea id="impT" class="imp-t" rows="9" placeholder="Um Natal Quase Perfeito&#10;Klaus (2019)&#10;...">${esc(text)}</textarea>
+        <button class="btn primary" id="impGo" style="width:100%;margin-top:12px">Procurar títulos</button>`;
+      $("#impGo").onclick = () => run($("#impT").value);
+    };
+    async function run(text) {
+      const lines = text.split("\n").map(s => s.trim()).filter(Boolean);
+      if (!lines.length) return;
+      sheet.innerHTML = `<div class="grab"></div><h2>Procurando...</h2><div style="display:grid;place-items:center;padding:30px"><div class="spinner"></div></div>`;
+      const rows = await Promise.all(lines.map(async line => {
+        const ym = line.match(/\((\d{4})\)\s*$/), year = ym ? ym[1] : "";
+        const q = line.replace(/\(\d{4}\)\s*$/, "").trim();
+        let alts = [];
+        try {
+          const r = await tmdb.get("/search/multi", { query: q, include_adult: "false" });
+          alts = (r.results || []).filter(x => x.media_type === "movie" || x.media_type === "tv").map(x => tmdb.norm(x, x.media_type)).filter(Boolean);
+          if (year) alts.sort((a, b) => (b.year === year) - (a.year === year));
+        } catch (e) { alts = []; }
+        alts = alts.slice(0, 4);
+        return { line, alts, i: 0, on: !!alts.length && !S.items[alts[0].k] };
+      }));
+      drawRows(rows);
+    }
+    function drawRows(rows) {
+      const cur = r => r.alts[r.i];
+      const n = rows.filter(r => r.on).length;
+      sheet.innerHTML = `<div class="grab"></div>
+        <h2>Confira</h2>
+        <p class="muted" style="margin-bottom:8px">Veja se o título achado é o certo. Toque em "Trocar" para ver outra opção.</p>
+        <div class="imp-list">${rows.map((r, x) => {
+          const it = cur(r);
+          if (!it) return `<div class="imp-row off"><div class="imp-b"><b>${esc(r.line)}</b><div class="muted">Não encontrei</div></div></div>`;
+          const has = S.items[it.k];
+          return `<div class="imp-row ${r.on ? "" : "off"}">
+            <img src="${tmdb.img(it.poster, "w185")}" alt="">
+            <div class="imp-b"><b>${esc(it.title)}</b><div class="muted">${TYPE_N[it.type]}${it.year ? " · " + esc(it.year) : ""}${has ? " · já está na sua lista" : ""}</div>
+              ${r.alts.length > 1 ? `<button class="imp-sw" data-sw="${x}">Trocar</button>` : ""}</div>
+            <button class="imp-ck ${r.on ? "on" : ""}" data-ck="${x}" aria-label="Incluir">${r.on ? IC.check : ""}</button>
+          </div>`;
+        }).join("")}</div>
+        <button class="btn primary" id="impAdd" style="width:100%;margin-top:12px" ${n ? "" : "disabled"}>Adicionar ${n} em Quero ver</button>
+        <button class="btn ghost" id="impBack" style="width:100%;margin-top:8px">Voltar</button>`;
+      $(".imp-list", sheet).onclick = e => {
+        const sw = e.target.closest("[data-sw]"), ck = e.target.closest("[data-ck]");
+        if (sw) { const r = rows[+sw.dataset.sw]; r.i = (r.i + 1) % r.alts.length; r.on = !S.items[cur(r).k]; drawRows(rows); }
+        else if (ck) { const r = rows[+ck.dataset.ck]; if (cur(r)) { r.on = !r.on; drawRows(rows); } }
+      };
+      $("#impBack").onclick = () => drawInput(rows.map(r => r.line).join("\n"));
+      $("#impAdd").onclick = () => {
+        const sel = rows.filter(r => r.on).map(cur);
+        sel.forEach(it => { if (!S.items[it.k]) store.setStatus(it, "want"); });
+        closeOverlay();
+        toast(`${sel.length} título${sel.length > 1 ? "s" : ""} em Quero ver`, null, null, 3500);
+        if (onDone) onDone();
+      };
+    }
+    drawInput();
+  }
+
   /* ---------- lançamentos ---------- */
   const addDays = n => { const x = new Date(); x.setDate(x.getDate() + n); return `${x.getFullYear()}-${pad2(x.getMonth() + 1)}-${pad2(x.getDate())}`; };
   U.prov = U.prov || {};
@@ -1636,9 +1702,10 @@
       <h1>Minhas listas</h1>
       <div class="seg" id="ltype" style="margin:10px 0 4px">${[["movie", "Filmes"], ["tv", "Séries"]].map(([k, n]) => `<button data-t="${k}" class="${k === U.listType ? "on" : ""}">${n}</button>`).join("")}</div>
       <div class="tabs" id="lt" style="margin-top:12px">${Object.entries(groups).filter(([k]) => k !== "watching" || U.listType === "tv").map(([k, v]) => `<button class="chip ${k === U.listTab ? "solid" : ""}" data-l="${k}">${v.ic.replace("<svg", '<svg width="16" height="16"')} ${v.n} (${v.c})</button>`).join("")}</div>
-      <div class="list" id="ll">${U.listTab === "hist" ? histHTML(hist) : items.length ? items.map(it => U.listTab === "watching" ? nextRow(it) : U.listTab === "want" ? `<div class="row-wrap">${rowHTML(it)}${isUnreleased(it) ? `<span class="quick-ph"></span>` : `<button class="quick" data-seen="${it.k}" aria-label="Já assisti">${IC.check}<span>Assisti</span></button>`}</div>` : rowHTML(it)).join("") : `<p class="muted" style="margin-top:24px">Nada aqui ainda. ${U.listTab === "want" ? "Arraste cartões para a direita no Início." : U.listTab === "watching" ? "Abra uma série e marque os episódios que já viu." : "Marque o que já assistiu no Início ou na Busca."}</p>`}</div>`;
+      <div class="list" id="ll">${U.listTab === "hist" ? histHTML(hist) : items.length ? items.map(it => U.listTab === "watching" ? nextRow(it) : U.listTab === "want" ? `<div class="row-wrap">${rowHTML(it)}${isUnreleased(it) ? `<span class="quick-ph"></span>` : `<button class="quick" data-seen="${it.k}" aria-label="Já assisti">${IC.check}<span>Assisti</span></button>`}</div>` : rowHTML(it)).join("") : `<p class="muted" style="margin-top:24px">Nada aqui ainda. ${U.listTab === "want" ? "Arraste cartões para a direita no Início." : U.listTab === "watching" ? "Abra uma série e marque os episódios que já viu." : "Marque o que já assistiu no Início ou na Busca."}</p>`}</div>${U.listTab === "want" ? `<button class="btn ghost" id="impList" style="width:100%;margin:14px 0 4px">Importar lista de títulos</button>` : ""}`;
     $("#ltype").onclick = e => { const b = e.target.closest("[data-t]"); if (b) { U.listType = b.dataset.t; renderLists(); } };
     $("#lt").onclick = e => { const b = e.target.closest("[data-l]"); if (b) { U.listTab = b.dataset.l; renderLists(); } };
+    const il = $("#impList"); if (il) il.onclick = () => openImport(renderLists);
     bindRows($("#ll"), items, renderLists);
     if (U.listTab === "hist") histBind(hist);
     $("#ll").addEventListener("click", async e => {
@@ -1753,7 +1820,7 @@
   /* =========================================================
      INÍCIO DO APP
      ========================================================= */
-  UD.VERSION = "1.9.0";
+  UD.VERSION = "1.10.0";
   function start() {
     const sv = $("#spVer"); if (sv) sv.textContent = "versão " + UD.VERSION;
     if (!S.apiKey) renderWelcome();

@@ -554,3 +554,15 @@ select.sel {
 .lndate { color: var(--amber-2); font-weight: 600; margin-right: 4px; }
 .pv { display: inline-flex; align-items: center; gap: 5px; background: rgba(255,255,255,.07); border: 1px solid var(--line); border-radius: 999px; padding: 2px 9px 2px 3px; font-size: 12px; }
 .pv img { width: 18px; height: 18px; border-radius: 50%; }
+
+/* ---------- importar lista ---------- */
+.imp-t { width: 100%; background: var(--bg-2); color: var(--text); border: 1px solid var(--line); border-radius: 14px; padding: 12px; font: inherit; resize: vertical; }
+.imp-list { max-height: 52vh; overflow-y: auto; }
+.imp-row { display: flex; align-items: center; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--line); }
+.imp-row.off { opacity: .55; }
+.imp-row img { width: 44px; height: 64px; border-radius: 8px; object-fit: cover; flex: none; }
+.imp-b { flex: 1; min-width: 0; font-size: 14px; }
+.imp-sw { color: var(--amber-2); font-size: 13px; padding: 4px 0; }
+.imp-ck { width: 30px; height: 30px; border-radius: 50%; border: 2px solid var(--faint); flex: none; display: grid; place-items: center; color: #1a1206; }
+.imp-ck.on { background: var(--amber); border-color: var(--amber); }
+.imp-ck svg { width: 16px; height: 16px; }
