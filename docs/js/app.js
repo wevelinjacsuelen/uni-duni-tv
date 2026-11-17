@@ -1869,7 +1869,7 @@
   /* =========================================================
      INÍCIO DO APP
      ========================================================= */
-  UD.VERSION = "1.11.0";
+  UD.VERSION = "1.11.1";
   function start() {
     const sv = $("#spVer"); if (sv) sv.textContent = "versão " + UD.VERSION;
     if (!S.apiKey) renderWelcome();
