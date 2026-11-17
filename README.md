@@ -20,6 +20,8 @@ Acesso: https://wevelinjacsuelen.github.io/uni-duni-tv
 
 **Importar lista.** Em Listas, aba Quero ver: cole vários títulos, um por linha, e o app procura cada um e adiciona todos em Quero ver. Dá para trocar o título achado e desmarcar os errados.
 
+**Novidades.** Quando o app atualiza para uma versão nova, abre um banner com o que mudou. Ele só fecha quando você toca no X. Quem usa o app pela primeira vez não vê o banner.
+
 **Calendário.** Próximos episódios das séries que você acompanha e estreias dos filmes em "Quero ver".
 
 **Sequência de dias.** Conta os dias seguidos em que você marcou "assisti agora". Registrar histórico antigo não conta.

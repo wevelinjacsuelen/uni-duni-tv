@@ -1420,6 +1420,30 @@
     d.loading = false;
     return d;
   }
+  async function lnSeasons(when) {
+    const L = U.ln;
+    if (L.seasons[when]) return L.seasons[when];
+    const lo = when === "out" ? addDays(-45) : addDays(1), hi = when === "out" ? dayKey() : addDays(120);
+    const cand = new Map();
+    try {
+      const r = await tmdb.get("/discover/tv", { sort_by: "popularity.desc", "air_date.gte": lo, "air_date.lte": hi, page: 1 });
+      tmdb.list(r, "tv").forEach(i => cand.set(i.k, i));
+    } catch (e) { /* segue com as séries do usuário */ }
+    Object.values(S.items).filter(i => i.type === "tv" && ["want", "watching", "liked"].includes(i.status)).slice(0, 40)
+      .forEach(i => { if (!cand.has(i.k)) cand.set(i.k, i); });
+    const out = [];
+    await Promise.all([...cand.values()].map(async it => {
+      try {
+        const d = await tmdb.get(`/tv/${it.id}`, {});
+        (d.seasons || []).forEach(se => {
+          if (se.season_number > 1 && se.air_date && se.air_date >= lo && se.air_date <= hi)
+            out.push(Object.assign({}, it, { season: se.season_number, sdate: se.air_date, date: it.date || d.first_air_date || "" }));
+        });
+      } catch (e) { /* ignora esta série */ }
+    }));
+    L.seasons[when] = out;
+    return out;
+  }
   async function lnProviders(it) {
     if (U.prov[it.k] !== undefined) return U.prov[it.k];
     let out = null;
@@ -1433,15 +1457,17 @@
   }
   function lnItems() {
     const L = U.ln, d = L.data[L.type + L.when];
-    let items = (d ? d.items : []).filter(it => {
+    const extra = L.type === "tv" ? (L.seasons[L.when] || []) : [];
+    let items = (d ? d.items.concat(extra) : []).filter(it => {
       const rec = S.items[it.k];
       return !(rec && (rec.status === "disliked" || rec.status === "dislike")) && !S.skips[it.k];
     });
-    items.sort((a, b) => L.when === "out" ? (a.date < b.date ? 1 : -1) : (a.date > b.date ? 1 : -1));
+    const dt = i => i.sdate || i.date;
+    items.sort((a, b) => L.when === "out" ? (dt(a) < dt(b) ? 1 : -1) : (dt(a) > dt(b) ? 1 : -1));
     return items;
   }
   function lnProvLine(it) {
-    const L = U.ln, fd = fmtDate(it.date).replace(new RegExp("/" + new Date().getFullYear() + "$"), ""), dt = L.when === "out" ? `Saiu ${fd}` : `Estreia ${fd}`;
+    const L = U.ln, fd = fmtDate(it.sdate || it.date).replace(new RegExp("/" + new Date().getFullYear() + "$"), ""), dt = it.season ? (L.when === "out" ? `T${it.season} saiu ${fd}` : `T${it.season} estreia ${fd}`) : (L.when === "out" ? `Saiu ${fd}` : `Estreia ${fd}`);
     let right = "";
     if (L.when === "out") {
       const p = U.prov[it.k];
@@ -1450,7 +1476,7 @@
       else if (!p.length) right = `<span class="muted">Sem streaming no Brasil ainda</span>`;
       else right = p.map(x => `<span class="pv">${x.l ? `<img src="${tmdb.img(x.l, "w92")}" alt="">` : ""}${esc(x.n)}</span>`).join("");
     }
-    return `<div class="lnline"><span class="lndate">${dt}</span>${right}</div>`;
+    return `<div class="lnline">${it.season ? `<span class="soon">Nova temporada</span>` : ""}<span class="lndate">${dt}</span>${right}</div>`;
   }
   function lnDraw() {
     const L = U.ln, d = L.data[L.type + L.when], box = $("#lnL");
@@ -1478,14 +1504,15 @@
     const d = await p;
     if (!same()) return;
     lnDraw();
+    if (type === "tv") { await lnSeasons(when); if (!same()) return; lnDraw(); }
     if (when === "out") {
-      const todo = d.items.filter(it => U.prov[it.k] === undefined);
+      const todo = lnItems().filter(it => U.prov[it.k] === undefined);
       await Promise.all(todo.map(it => lnProviders(it)));
       if (same()) lnDraw();
     }
   }
   function renderLaunch() {
-    const L = U.ln = U.ln || { type: "movie", when: "out", prov: "", data: {} };
+    const L = U.ln = U.ln || { type: "movie", when: "out", prov: "", data: {}, seasons: {} };
     screen.innerHTML = `
       <div class="topbar">${WM}</div>
       <h1>Lançamentos</h1>
@@ -1817,10 +1844,32 @@
     r.readAsText(file);
   }
 
+  /* ---------- novidades da versão ---------- */
+  const NEWS = [
+    { v: "1.11.0", t: ["Lançamentos de séries agora mostram também estreias de novas temporadas (ex.: T3 estreia 05/12), das séries populares e das que você marcou."] },
+    { v: "1.10.0", t: ["Importar lista: em Listas, aba Quero ver, cole vários títulos de uma vez e eles entram em Quero ver."] },
+    { v: "1.9.0", t: ["Nova aba Lançamentos: o que saiu nos últimos 45 dias e o que estreia nos próximos 120, com o streaming do Brasil e filtro por serviço."] },
+    { v: "1.8.0", t: ["Histórico: tudo o que você assistiu, com data. Ao marcar, o app pergunta se foi agora ou em outra data."] }
+  ];
+  const vnum = v => String(v || "0").split(".").reduce((a, x) => a * 1000 + (+x || 0), 0);
+  function showNews() {
+    if (!S.apiKey || !S.onboarded) { if (S.seenVer !== UD.VERSION) { S.seenVer = UD.VERSION; store.save(true); } return; }
+    if (S.seenVer === UD.VERSION || $("#news")) return;
+    const list = NEWS.filter(n => !S.seenVer || vnum(n.v) > vnum(S.seenVer)).slice(0, 4);
+    if (!list.length) { S.seenVer = UD.VERSION; store.save(true); return; }
+    const el = document.createElement("div");
+    el.id = "news";
+    el.innerHTML = `<button class="news-x" aria-label="Fechar">${IC.x || "✕"}</button>
+      <h2>Novidades</h2>
+      ${list.map(n => `<h3>Versão ${n.v}</h3><ul>${n.t.map(x => `<li>${esc(x)}</li>`).join("")}</ul>`).join("")}`;
+    document.body.appendChild(el);
+    $(".news-x", el).onclick = () => { S.seenVer = UD.VERSION; store.save(true); el.remove(); };
+  }
+
   /* =========================================================
      INÍCIO DO APP
      ========================================================= */
-  UD.VERSION = "1.10.0";
+  UD.VERSION = "1.11.0";
   function start() {
     const sv = $("#spVer"); if (sv) sv.textContent = "versão " + UD.VERSION;
     if (!S.apiKey) renderWelcome();
@@ -1829,6 +1878,7 @@
     setTimeout(() => {
       const sp = $("#splash"); if (sp) { sp.classList.add("out"); setTimeout(() => sp.remove(), 500); }
     }, 1600);
+    setTimeout(showNews, 1900);
     if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
     if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
       navigator.serviceWorker.register("sw.js").catch(() => {});

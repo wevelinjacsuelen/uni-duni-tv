@@ -6,6 +6,7 @@
     v: 1,
     apiKey: "",
     onboarded: false,
+    seenVer: "",
     type: "movie",
     items: {},          // "movie:123" -> registro do título com status
     skips: {},          // "movie:123" -> data em que pulou
